@@ -140,7 +140,7 @@ Replacement operates on whole top-level app-data entries: every entry that isn't
 
 Claude Desktop stores its cookie database under `Network\Cookies` on Windows and at the top level of app-data on macOS; the location is detected at runtime. Three Windows-specific behaviours are worth knowing:
 
-- The Microsoft Store build is MSIX-packaged, so its real app-data lives at `%LOCALAPPDATA%\Packages\Claude_pzs8sxrjxfjjc\LocalCache\Roaming\Claude`. `%APPDATA%\Claude` is only a container projection that exists while the app is running. Profiles are captured from the backing store, so they work with Claude stopped. The standalone installer is unpackaged and uses `%APPDATA%\Claude` directly; both are detected automatically.
+- Current Microsoft Store builds keep their app-data at `%LOCALAPPDATA%\Claude-Data\claude_pzs8sxrjxfjjc`. Older ones are MSIX-packaged, so their real app-data lives at `%LOCALAPPDATA%\Packages\Claude_pzs8sxrjxfjjc\LocalCache\Roaming\Claude`. `%APPDATA%\Claude` is only a container projection that exists while the app is running. Profiles are captured from the backing store, so they work with Claude stopped. The standalone installer is unpackaged and uses `%APPDATA%\Claude` directly; both are detected automatically.
 
 - Claude Code installs its own `claude.exe` inside `%APPDATA%\Claude`. Profile switching matches processes by executable path, not image name, so running CLI sessions are left alone.
 - Windows Claude holds the live cookie database open denying all sharing, so its expiry cannot be read while the app runs — `status` shows the active profile but reports the session expiry as `-`. Quit Claude to see it. `save` and `use` are unaffected because they stop the app first.

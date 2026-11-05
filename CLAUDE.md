@@ -76,15 +76,20 @@ claude-desktop-swap status             # show which profile is active (if tracka
 | OS      | Claude app data path                                      |
 |---------|-----------------------------------------------------------|
 | macOS   | `~/Library/Application Support/Claude/`                   |
-| Windows (Store/MSIX) | `%LOCALAPPDATA%\Packages\Claude_pzs8sxrjxfjjc\LocalCache\Roaming\Claude\` |
+| Windows (Store, current) | `%LOCALAPPDATA%\Claude-Data\claude_pzs8sxrjxfjjc\` |
+| Windows (Store/MSIX, older) | `%LOCALAPPDATA%\Packages\Claude_pzs8sxrjxfjjc\LocalCache\Roaming\Claude\` |
 | Windows (standalone) | `%APPDATA%\Claude\`                            |
 
 On Windows the Store build is MSIX-packaged, and `%APPDATA%\Claude` is **not**
 the app-data directory — it is the container's projection of the package's
 private store, which exists only while the packaged app is running. `save` and
-`use` stop Claude before reading, so they would find nothing there. Resolution
-probes the package store first and falls back to `%APPDATA%\Claude` for the
-unpackaged standalone installer. Verify with the app *stopped*: a check that
+`use` stop Claude before reading, so they would find nothing there. Newer Store
+builds moved their data out of the container to `%LOCALAPPDATA%\Claude-Data\`
+(lowercased package family name). Resolution probes that directory first, then
+the package store, and falls back to `%APPDATA%\Claude` for the unpackaged
+standalone installer. Only the directory's existence is checked: `add` wipes
+`config.json` before relaunching, so probing for a file inside would flip
+resolution to the stale package store mid-command. Verify with the app *stopped*: a check that
 passes while it runs proves nothing.
 
 Three more Windows invariants, all non-obvious and all load-bearing:

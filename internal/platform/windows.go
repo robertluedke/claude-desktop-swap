@@ -49,6 +49,11 @@ func current() Platform { return &windowsPlatform{} }
 // keeps a real %APPDATA%\Claude, so that remains the fallback.
 func (w *windowsPlatform) AppDataPath() (string, error) {
 	if local, err := os.UserCacheDir(); err == nil {
+		// Newer Store builds keep their data outside the MSIX container.
+		relocated := filepath.Join(local, "Claude-Data", strings.ToLower(packageFamilyName))
+		if _, err := os.Stat(relocated); err == nil {
+			return relocated, nil
+		}
 		packaged := filepath.Join(local, "Packages", packageFamilyName, "LocalCache", "Roaming", appName)
 		if _, err := os.Stat(packaged); err == nil {
 			return packaged, nil
