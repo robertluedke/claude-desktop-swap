@@ -91,20 +91,9 @@ claude-desktop-swap unlink-code-sessions personal
 
 ### Shared Claude Code sessions
 
-Claude Desktop keeps the sidebar's Claude Code sessions per account and
-organization under `claude-code-sessions/<account>/<org>/`. `link-code-sessions
-<primary> <profile>...` merges each profile's sessions into the primary's
-directory and replaces theirs with a link (a junction on Windows, a symlink on
-macOS), so all
-linked accounts see and continue the same sessions — nothing is copied. A
-backup goes to `~/.claude-swap/sessions-backup-<time>`, and the links are
-recorded in `~/.claude-swap/session-links.json`.
+Claude Desktop keeps the sidebar's Claude Code sessions per account and organization under `claude-code-sessions/<account>/<org>/`. `link-code-sessions <primary> <profile>...` merges each profile's sessions into the primary's directory and replaces theirs with a link (a junction on Windows, a symlink on macOS), so all linked accounts see and continue the same sessions — nothing is copied. A backup goes to `~/.claude-swap/sessions-backup-<time>`, and the links are recorded in `~/.claude-swap/session-links.json`.
 
-`unlink-code-sessions [profile...]` (all linked profiles if none given) removes
-the link. Sessions a profile brought in when it was linked move back to it;
-sessions created while linked stay with the primary. Cowork sessions are not
-affected. Connectors bound to the primary's organization are not available
-when continuing a session from another account.
+`unlink-code-sessions [profile...]` (all linked profiles if none given) removes the link. Sessions a profile brought in when it was linked move back to it; sessions created while linked stay with the primary. Cowork sessions are not affected. Connectors bound to the primary's organization are not available when continuing a session from another account.
 
 ## First-time setup
 
@@ -150,7 +139,7 @@ The active profile is tracked at `~/.claude-swap/current`, but `status` identifi
 
 ## Usage limits
 
-`list` shows when each account's 5-hour and 7-day usage limits reset, in local time, with the share already used — for example `03:00 (100%)` under `5H RESET` and `Tue 23:00 (37%)` under `7D RESET`. The values are fetched live from claude.ai and never stored; `-` means no window is running or the lookup failed (for example offline).
+`list` shows when each account's 5-hour and 7-day usage limits reset, in local time, with the share already used — for example `03:00 (100%)` under `5H RESET` and `Tue 23:00 (37%)` under `7D RESET`. The values are fetched live from `claude.ai` and never stored; `-` means no window is running or the lookup failed (for example offline).
 
 ## Session expiry
 
@@ -173,19 +162,19 @@ Replacement operates on whole top-level app-data entries: every entry that isn't
 | macOS | Supported |
 | Windows | Supported |
 
-Claude Desktop stores its cookie database under `Network\Cookies` on Windows and at the top level of app-data on macOS; the location is detected at runtime. Three Windows-specific behaviours are worth knowing:
+Claude Desktop stores its cookie database under `Network\Cookies` on Windows and at the top level of app-data on macOS; the location is detected at runtime. Three Windows-specific behaviors are worth knowing:
 
 - Current Microsoft Store builds keep their app-data at `%LOCALAPPDATA%\Claude-Data\claude_pzs8sxrjxfjjc`. Older ones are MSIX-packaged, so their real app-data lives at `%LOCALAPPDATA%\Packages\Claude_pzs8sxrjxfjjc\LocalCache\Roaming\Claude`. `%APPDATA%\Claude` is only a container projection that exists while the app is running. Profiles are captured from the backing store, so they work with Claude stopped. The standalone installer is unpackaged and uses `%APPDATA%\Claude` directly; all are detected automatically.
 - Claude Code installs its own `claude.exe` inside the app-data tree. Profile switching matches processes by executable path, not image name, so running CLI sessions are left alone.
 - Windows Claude holds the live cookie database open denying all sharing, so its expiry cannot be read while the app runs — `status` shows the active profile but reports the session expiry as `-`. Quit Claude to see it. `save` and `use` are unaffected because they stop the app first.
 
-Account email, plan and usage limits (`list`, and the post-restore server check in `use`) work on macOS and Windows: the cookie key is read from the macOS keychain, or on Windows unwrapped from `Local State` via DPAPI for the current user.
+Account email, plan, and usage limits (`list`, and the post-restore server check in `use`) work on macOS and Windows: the cookie key is read from the macOS keychain, or on Windows unwrapped from `Local State` via DPAPI for the current user.
 
 ## Security
 
-Cookie values are encrypted by Chromium with a key held by the OS: the macOS keychain, or on Windows a key protected by DPAPI for the current user. Saving, switching and `add` never decrypt anything — they copy the raw encrypted files, which are only usable on the same machine (on Windows, for the same Windows user).
+Cookie values are encrypted by Chromium with a key held by the OS: the macOS keychain, or on Windows a key protected by DPAPI for the current user. Saving, switching, and `add` never decrypt anything — they copy the raw encrypted files, which are only usable on the same machine (on Windows, for the same Windows user).
 
-The one exception is account info. For email, plan, usage limits and the post-restore check in `use`, the `sessionKey` cookie is decrypted in memory and sent to `claude.ai` — the only network calls the tool makes, from `list`, the `use` picker and `use`. The decrypted value is never written to disk, printed, or logged; only email and plan are cached in `meta.json`, and usage limits are not stored at all. These lookups are best-effort: offline, they are skipped, and only an explicit server rejection blocks a switch.
+The one exception is account info. For email, plan, usage limits, and the post-restore check in `use`, the `sessionKey` cookie is decrypted in memory and sent to `claude.ai` — the only network calls the tool makes, from `list`, the `use` picker, and `use`. The decrypted value is never written to disk, printed, or logged; only email and plan are cached in `meta.json`, and usage limits are not stored at all. These lookups are best-effort: offline, they are skipped, and only an explicit server rejection blocks a switch.
 
 Profile directories are created with `0700` permissions and profile files with `0600`. On macOS, restoration refuses broader permissions. Windows has no POSIX mode bits — `os.FileMode` there is synthesized from file attributes and duplicates the owner bits — so that check is skipped and access is governed by NTFS ACLs, which this tool does not inspect.
 
