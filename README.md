@@ -13,11 +13,14 @@ Switch between multiple Claude Desktop accounts without logging out of any of th
 
 > **This is an updated fork** of [FranCalveyra/claude-desktop-swap](https://github.com/FranCalveyra/claude-desktop-swap) with new features and fixes:
 >
-> - **Current Windows Store builds:** finds Claude's app-data in `%LOCALAPPDATA%\Claude-Data\claude_pzs8sxrjxfjjc`.
-> - **Shared Claude Code sessions:** `link-code-sessions` / `unlink-code-sessions` let several accounts show and continue the same sidebar sessions ([details](#shared-claude-code-sessions)).
-> - **Account info on Windows:** `list` shows email and plan on Windows too, including Team and Enterprise plans, and `use` verifies the restored session with the server.
-> - **Usage limits in `list`:** new `5H RESET` and `7D RESET` columns show when the 5-hour and 7-day limits reset and how much is used; `EXPIRES` is now `LOGIN EXPIRES`.
-> - **More reliable `add`:** if the new login has not reached the disk yet, Claude is relaunched instead of the command failing.
+> - **Current Windows Store builds** (Windows): finds Claude's app-data in `%LOCALAPPDATA%\Claude-Data\claude_pzs8sxrjxfjjc`.
+> - **Account info on Windows** (Windows): `list` shows email and plan, and `use` verifies the restored session with the server — previously macOS-only.
+> - **Shared Claude Code sessions** (macOS and Windows): `link-code-sessions` / `unlink-code-sessions` let several accounts show and continue the same sidebar sessions ([details](#shared-claude-code-sessions)).
+> - **Usage limits in `list`** (macOS and Windows): new `5H RESET` and `7D RESET` columns show when the 5-hour and 7-day limits reset and how much is used; `EXPIRES` is now `LOGIN EXPIRES`.
+> - **Team and Enterprise plans** (macOS and Windows): the `PLAN` column now recognizes them.
+> - **More reliable `add`** (macOS and Windows): if the new login has not reached the disk yet, Claude is relaunched instead of the command failing.
+>
+> These changes were tested against Claude Desktop on Windows. On macOS they build and pass `go vet`, but have not been run against the app.
 
 ## How it works
 
@@ -61,7 +64,7 @@ go install github.com/robertluedke/claude-desktop-swap@latest
 ## Usage
 
 ```sh
-# Save your current session as a named profile (quit Claude first)
+# Save your current session as a named profile (stops and restarts Claude if it is running)
 claude-desktop-swap save personal
 
 # Add another account interactively — no manual logout required
@@ -94,7 +97,8 @@ claude-desktop-swap unlink-code-sessions personal
 Claude Desktop keeps the sidebar's Claude Code sessions per account and
 organization under `claude-code-sessions/<account>/<org>/`. `link-code-sessions
 <primary> <profile>...` merges each profile's sessions into the primary's
-directory and replaces theirs with a link (a junction on Windows), so all
+directory and replaces theirs with a link (a junction on Windows, a symlink on
+macOS), so all
 linked accounts see and continue the same sessions — nothing is copied. A
 backup goes to `~/.claude-swap/sessions-backup-<time>`, and the links are
 recorded in `~/.claude-swap/session-links.json`.
@@ -107,7 +111,7 @@ when continuing a session from another account.
 
 ## First-time setup
 
-1. Make sure you're logged into Claude Desktop as your first account. Quit Claude Desktop, then snapshot it:
+1. Make sure you're logged into Claude Desktop as your first account, then snapshot it:
    ```sh
    claude-desktop-swap save personal
    ```
@@ -126,7 +130,7 @@ claude-desktop-swap use work
 
 > **Important:** Never manually log out of Claude Desktop to set up a new account — Anthropic invalidates the session server-side and the snapshot becomes useless. Always use `add` or `save` to capture a session **before** any logout.
 
-`save`, including `save --force`, refuses to snapshot while Claude is running. A quiescent database is required for a safe WAL checkpoint.
+`save` stops Claude before snapshotting, because a quiescent database is required for a safe WAL checkpoint, and starts it again afterwards if it was running.
 
 ## Profile storage
 
@@ -139,17 +143,19 @@ Two denylists decide what never enters a profile:
 
 Everything else is captured by default, so account state Anthropic adds later travels with the profile instead of silently leaking between accounts.
 
-Directories use `0700`; files use `0600`. Cookie values are never selected, decrypted, printed, or logged.
+Directories use `0700`; files use `0600`. Saving and restoring copy files as-is: cookie values are never selected, decrypted, printed, or logged in that path (see [Security](#security) for the account-info exception).
 
 Profiles written by older versions are rejected as an outdated format rather than migrated. Run `save <name>` while signed into that account to re-save it.
 
-Health is based on non-secret local SQLite evidence and is reported as `usable`, `expired`, `missing`, or `unknown`. Expired, missing, unknown, unsafe, or integrity-mismatched profiles are never restored. Server-side expiry cannot be extended by this tool.
+Health is based on non-secret local SQLite evidence and is reported as `usable`, `expired`, `missing`, or `unknown`; a profile the server rejects (HTTP 401) is shown as `expired`. Expired, missing, unknown, unsafe, or integrity-mismatched profiles are never restored. Server-side expiry cannot be extended by this tool.
 
 The active profile is tracked at `~/.claude-swap/current`, but `status` identifies the live account by `config.json`'s `lastKnownAccountUuid` rather than by that file or by a cookie digest — the `sessionKey` is a sliding token Claude rotates on its own, so a live digest routinely diverges from what was last saved even for the correct account.
 
-## Session expiry
+## Usage limits
 
-`list` also shows when the 5-hour and 7-day usage limits reset (`5H RESET`, `7D RESET`, with the share already used), fetched live from claude.ai.
+`list` shows when each account's 5-hour and 7-day usage limits reset, in local time, with the share already used — for example `03:00 (100%)` under `5H RESET` and `Tue 23:00 (37%)` under `7D RESET`. The values are fetched live from claude.ai and never stored; `-` means no window is running or the lookup failed (for example offline).
+
+## Session expiry
 
 `list`, `status`, and the `use` picker show a `LOGIN EXPIRES` column derived from the `sessionKey` cookie's own expiry, and `save`/`use` print a warning when a session has 7 days or less left. The `sessionKey` is a sliding ~28-day token that Claude renews whenever you use that account, so reaching the 7-day window means the profile has gone roughly three weeks untouched.
 
@@ -172,20 +178,21 @@ Replacement operates on whole top-level app-data entries: every entry that isn't
 
 Claude Desktop stores its cookie database under `Network\Cookies` on Windows and at the top level of app-data on macOS; the location is detected at runtime. Three Windows-specific behaviours are worth knowing:
 
-- Current Microsoft Store builds keep their app-data at `%LOCALAPPDATA%\Claude-Data\claude_pzs8sxrjxfjjc`. Older ones are MSIX-packaged, so their real app-data lives at `%LOCALAPPDATA%\Packages\Claude_pzs8sxrjxfjjc\LocalCache\Roaming\Claude`. `%APPDATA%\Claude` is only a container projection that exists while the app is running. Profiles are captured from the backing store, so they work with Claude stopped. The standalone installer is unpackaged and uses `%APPDATA%\Claude` directly; both are detected automatically.
-
-- Claude Code installs its own `claude.exe` inside `%APPDATA%\Claude`. Profile switching matches processes by executable path, not image name, so running CLI sessions are left alone.
+- Current Microsoft Store builds keep their app-data at `%LOCALAPPDATA%\Claude-Data\claude_pzs8sxrjxfjjc`. Older ones are MSIX-packaged, so their real app-data lives at `%LOCALAPPDATA%\Packages\Claude_pzs8sxrjxfjjc\LocalCache\Roaming\Claude`. `%APPDATA%\Claude` is only a container projection that exists while the app is running. Profiles are captured from the backing store, so they work with Claude stopped. The standalone installer is unpackaged and uses `%APPDATA%\Claude` directly; all are detected automatically.
+- Claude Code installs its own `claude.exe` inside the app-data tree. Profile switching matches processes by executable path, not image name, so running CLI sessions are left alone.
 - Windows Claude holds the live cookie database open denying all sharing, so its expiry cannot be read while the app runs — `status` shows the active profile but reports the session expiry as `-`. Quit Claude to see it. `save` and `use` are unaffected because they stop the app first.
 
-Account email and plan (`list`, and the post-restore server check in `use`) work on macOS and Windows: the cookie key is read from the macOS keychain, or on Windows unwrapped from `Local State` via DPAPI for the current user.
+Account email, plan and usage limits (`list`, and the post-restore server check in `use`) work on macOS and Windows: the cookie key is read from the macOS keychain, or on Windows unwrapped from `Local State` via DPAPI for the current user.
 
 ## Security
 
-Cookie values are encrypted by Chromium using your OS keychain. `claude-desktop-swap` never decrypts them — it copies raw encrypted blobs, which are only usable on the machine where they were created.
+Cookie values are encrypted by Chromium with a key held by the OS: the macOS keychain, or on Windows a key protected by DPAPI for the current user. Saving, switching and `add` never decrypt anything — they copy the raw encrypted files, which are only usable on the same machine (on Windows, for the same Windows user).
+
+The one exception is account info. For email, plan, usage limits and the post-restore check in `use`, the `sessionKey` cookie is decrypted in memory and sent to `claude.ai` — the only network calls the tool makes, from `list`, the `use` picker and `use`. The decrypted value is never written to disk, printed, or logged; only email and plan are cached in `meta.json`, and usage limits are not stored at all. These lookups are best-effort: offline, they are skipped, and only an explicit server rejection blocks a switch.
 
 Profile directories are created with `0700` permissions and profile files with `0600`. On macOS, restoration refuses broader permissions. Windows has no POSIX mode bits — `os.FileMode` there is synthesized from file attributes and duplicates the owner bits — so that check is skipped and access is governed by NTFS ACLs, which this tool does not inspect.
 
 ## Contributors
 
 - [Francisco Calveyra](https://github.com/FranCalveyra) — original author
-- [Robert Lüdke](https://github.com/robertluedke) — Windows Store data path, shared Claude Code sessions, Windows account info, usage-limit columns
+- [Robert Lüdke](https://github.com/robertluedke) — Windows Store data path, Windows account info, shared Claude Code sessions, usage-limit columns, Team/Enterprise plan detection
