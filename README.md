@@ -73,7 +73,29 @@ claude-desktop-swap status --check
 
 # Delete a profile
 claude-desktop-swap delete old-account
+
+# Show work's Claude Code sessions in personal too, and continue them there
+claude-desktop-swap link-code-sessions work personal
+
+# Give personal its own Claude Code sessions again
+claude-desktop-swap unlink-code-sessions personal
 ```
+
+### Shared Claude Code sessions
+
+Claude Desktop keeps the sidebar's Claude Code sessions per account and
+organization under `claude-code-sessions/<account>/<org>/`. `link-code-sessions
+<primary> <profile>...` merges each profile's sessions into the primary's
+directory and replaces theirs with a link (a junction on Windows), so all
+linked accounts see and continue the same sessions — nothing is copied. A
+backup goes to `~/.claude-swap/sessions-backup-<time>`, and the links are
+recorded in `~/.claude-swap/session-links.json`.
+
+`unlink-code-sessions [profile...]` (all linked profiles if none given) removes
+the link. Sessions a profile brought in when it was linked move back to it;
+sessions created while linked stay with the primary. Cowork sessions are not
+affected. Connectors bound to the primary's organization are not available
+when continuing a session from another account.
 
 ## First-time setup
 
