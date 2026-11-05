@@ -18,6 +18,7 @@ Switch between multiple Claude Desktop accounts without logging out of any of th
 > - **Shared Claude Code sessions** (macOS and Windows): `link-code-sessions` / `unlink-code-sessions` let several accounts show and continue the same sidebar sessions ([details](#shared-claude-code-sessions)).
 > - **Usage limits in `list`** (macOS and Windows): new `5H RESET` and `7D RESET` columns show when the 5-hour and 7-day limits reset and how much is used; `EXPIRES` is now `LOGIN EXPIRES`.
 > - **Team and Enterprise plans** (macOS and Windows): the `PLAN` column now recognizes them.
+> - **One-line Windows installer** (Windows): installs or updates the exe, puts it on your `Path`, and adds the `cdswap` alias ([details](#installation)).
 > - **More reliable `add`** (macOS and Windows): if the new login has not reached the disk yet, Claude is relaunched instead of the command failing.
 >
 > These changes were tested against Claude Desktop on Windows. On macOS they build and pass `go vet`, but have not been run against the app.
@@ -46,14 +47,10 @@ sudo mv claude-desktop-swap /usr/local/bin/
 
 **Windows (PowerShell)**
 ```powershell
-$dir = "$env:LOCALAPPDATA\Programs\claude-desktop-swap"
-New-Item -ItemType Directory -Force -Path $dir | Out-Null
-Invoke-WebRequest -Uri https://github.com/robertluedke/claude-desktop-swap/releases/latest/download/claude-desktop-swap_windows_amd64.zip -OutFile "$env:TEMP\cds.zip"
-Expand-Archive -Path "$env:TEMP\cds.zip" -DestinationPath $dir -Force
-[Environment]::SetEnvironmentVariable("Path", [Environment]::GetEnvironmentVariable("Path", "User") + ";$dir", "User")
+irm https://raw.githubusercontent.com/robertluedke/claude-desktop-swap/main/install.ps1 | iex
 ```
 
-Open a new terminal afterwards so the updated `Path` takes effect. On Arm devices substitute `claude-desktop-swap_windows_arm64.zip`.
+[`install.ps1`](install.ps1) downloads the latest release for your CPU (x64 or Arm), installs it to `%LOCALAPPDATA%\Programs\claude-desktop-swap`, adds that folder to your user `Path`, and creates `cdswap` as a short alias. Afterwards both `claude-desktop-swap` and `cdswap` work from any terminal; open a new one if the current one does not find them yet. Run the same line again to update. No admin rights are needed.
 
 ### Build from source
 
@@ -195,4 +192,4 @@ Profile directories are created with `0700` permissions and profile files with `
 ## Contributors
 
 - [Francisco Calveyra](https://github.com/FranCalveyra) — original author
-- [Robert Lüdke](https://github.com/robertluedke) — Windows Store data path, Windows account info, shared Claude Code sessions, usage-limit columns, Team/Enterprise plan detection
+- [Robert Lüdke](https://github.com/robertluedke) — Windows Store data path, Windows account info, shared Claude Code sessions, usage-limit columns, Team/Enterprise plan detection, Windows installer
