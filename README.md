@@ -186,3 +186,8 @@ Account email and plan (`list`, and the post-restore server check in `use`) work
 Cookie values are encrypted by Chromium using your OS keychain. `claude-desktop-swap` never decrypts them — it copies raw encrypted blobs, which are only usable on the machine where they were created.
 
 Profile directories are created with `0700` permissions and profile files with `0600`. On macOS, restoration refuses broader permissions. Windows has no POSIX mode bits — `os.FileMode` there is synthesized from file attributes and duplicates the owner bits — so that check is skipped and access is governed by NTFS ACLs, which this tool does not inspect.
+
+## Contributors
+
+- [Francisco Calveyra](https://github.com/FranCalveyra) — original author
+- [Robert Lüdke](https://github.com/robertluedke) — Windows Store data path, shared Claude Code sessions, Windows account info, usage-limit columns
