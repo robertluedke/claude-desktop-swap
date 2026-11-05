@@ -1,4 +1,4 @@
-module github.com/FranCalveyra/claude-desktop-swap
+module github.com/robertluedke/claude-desktop-swap
 
 go 1.25.0
 

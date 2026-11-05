@@ -11,7 +11,7 @@ builds:
     env:
       - CGO_ENABLED=0
     ldflags:
-      - -s -w -X github.com/FranCalveyra/claude-desktop-swap/cmd.Version={{.Version}}
+      - -s -w -X github.com/robertluedke/claude-desktop-swap/cmd.Version={{.Version}}
     goos:
       - darwin
       - windows

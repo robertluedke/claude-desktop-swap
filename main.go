@@ -1,6 +1,6 @@
 package main
 
-import "github.com/FranCalveyra/claude-desktop-swap/cmd"
+import "github.com/robertluedke/claude-desktop-swap/cmd"
 
 func main() {
 	cmd.Execute()

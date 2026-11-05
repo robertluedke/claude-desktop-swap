@@ -3,7 +3,7 @@ package cmd
 import (
 	"testing"
 
-	"github.com/FranCalveyra/claude-desktop-swap/internal/profile"
+	"github.com/robertluedke/claude-desktop-swap/internal/profile"
 )
 
 func TestCheckpointTrackedSessionUsesAtomicCheckpoint(t *testing.T) {

@@ -55,9 +55,7 @@ Open a new terminal afterwards so the updated `Path` takes effect. On Arm device
 ### Build from source
 
 ```sh
-git clone https://github.com/robertluedke/claude-desktop-swap.git
-cd claude-desktop-swap
-go build -o claude-desktop-swap .
+go install github.com/robertluedke/claude-desktop-swap@latest
 ```
 
 ## Usage

@@ -3,8 +3,8 @@ package cmd
 import (
 	"testing"
 
-	"github.com/FranCalveyra/claude-desktop-swap/internal/account"
-	"github.com/FranCalveyra/claude-desktop-swap/internal/profile"
+	"github.com/robertluedke/claude-desktop-swap/internal/account"
+	"github.com/robertluedke/claude-desktop-swap/internal/profile"
 )
 
 func TestApplyLiveAccountsMarksRejectedProfilesExpired(t *testing.T) {

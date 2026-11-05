@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/FranCalveyra/claude-desktop-swap/internal/profile"
+	"github.com/robertluedke/claude-desktop-swap/internal/profile"
 )
 
 var renewalNow = time.Date(2026, 8, 1, 12, 0, 0, 0, time.UTC)

@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/FranCalveyra/claude-desktop-swap/internal/profile"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/robertluedke/claude-desktop-swap/internal/profile"
 )
 
 func TestPickerShowsHealthWithoutSecretData(t *testing.T) {

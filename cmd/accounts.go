@@ -1,8 +1,8 @@
 package cmd
 
 import (
-	"github.com/FranCalveyra/claude-desktop-swap/internal/account"
-	"github.com/FranCalveyra/claude-desktop-swap/internal/profile"
+	"github.com/robertluedke/claude-desktop-swap/internal/account"
+	"github.com/robertluedke/claude-desktop-swap/internal/profile"
 )
 
 // enrichLiveAccounts overlays live Claude.ai account info (email, plan) onto the

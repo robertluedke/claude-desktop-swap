@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/FranCalveyra/claude-desktop-swap/internal/profile"
+	"github.com/robertluedke/claude-desktop-swap/internal/profile"
 )
 
 // liveSessionExpiry reads the expiry from live app-data rather than from a

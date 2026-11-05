@@ -8,7 +8,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/FranCalveyra/claude-desktop-swap/internal/profile"
+	"github.com/robertluedke/claude-desktop-swap/internal/profile"
 )
 
 // ErrUnauthorized indicates the server explicitly rejected the sessionKey

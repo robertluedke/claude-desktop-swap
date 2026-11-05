@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/FranCalveyra/claude-desktop-swap/internal/profile"
+	"github.com/robertluedke/claude-desktop-swap/internal/profile"
 )
 
 func TestHealthLabelDistinguishesAllStates(t *testing.T) {

@@ -1,6 +1,6 @@
 package account
 
-import "github.com/FranCalveyra/claude-desktop-swap/internal/profile"
+import "github.com/robertluedke/claude-desktop-swap/internal/profile"
 
 // Info holds live account metadata fetched from the Claude.ai API.
 type Info struct {

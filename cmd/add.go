@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/FranCalveyra/claude-desktop-swap/internal/platform"
-	"github.com/FranCalveyra/claude-desktop-swap/internal/profile"
+	"github.com/robertluedke/claude-desktop-swap/internal/platform"
+	"github.com/robertluedke/claude-desktop-swap/internal/profile"
 	"github.com/spf13/cobra"
 )
 
