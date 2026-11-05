@@ -7,6 +7,8 @@ import (
 	"io"
 	"net/http"
 	"time"
+
+	"github.com/FranCalveyra/claude-desktop-swap/internal/profile"
 )
 
 // ErrUnauthorized indicates the server explicitly rejected the sessionKey
@@ -15,6 +17,7 @@ var ErrUnauthorized = errors.New("session rejected by server")
 
 const (
 	orgsEndpoint    = "https://claude.ai/api/organizations"
+	usagePath       = "/usage"
 	accountEndpoint = "https://claude.ai/api/account"
 	userAgent       = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 )
@@ -23,6 +26,7 @@ var defaultClient = &http.Client{Timeout: 10 * time.Second}
 
 // orgResponse covers the known shapes of the /api/organizations response.
 type orgResponse struct {
+	UUID         string          `json:"uuid"`
 	Capabilities json.RawMessage `json:"capabilities"`
 	RavenType    string          `json:"raven_type"`
 	Settings     struct {
@@ -32,6 +36,23 @@ type orgResponse struct {
 		Tier string `json:"tier"`
 		Plan string `json:"plan"`
 	} `json:"billing_info"`
+}
+
+type usageWindow struct {
+	Utilization float64   `json:"utilization"`
+	ResetsAt    time.Time `json:"resets_at"`
+}
+
+type usageResponse struct {
+	FiveHour *usageWindow `json:"five_hour"`
+	SevenDay *usageWindow `json:"seven_day"`
+}
+
+func (w *usageWindow) window() profile.UsageWindow {
+	if w == nil {
+		return profile.UsageWindow{}
+	}
+	return profile.UsageWindow{Percent: w.Utilization, ResetsAt: w.ResetsAt}
 }
 
 type accountResponse struct {
@@ -48,12 +69,16 @@ func fetchFromAPI(sessionKey string) (Info, error) {
 	orgs, err := getJSON[[]orgResponse](orgsEndpoint, sessionKey)
 	if errors.Is(err, ErrUnauthorized) {
 		info.Rejected = true
-	} else if err == nil {
+	} else if err == nil && len(orgs) > 0 {
+		usageOrg := orgs[0].UUID
 		for _, org := range orgs {
 			if plan := parsePlan(org); plan != "" {
-				info.Plan = plan
+				info.Plan, usageOrg = plan, org.UUID
 				break
 			}
+		}
+		if usage, err := getJSON[usageResponse](orgsEndpoint+"/"+usageOrg+usagePath, sessionKey); err == nil {
+			info.FiveHour, info.SevenDay = usage.FiveHour.window(), usage.SevenDay.window()
 		}
 	}
 

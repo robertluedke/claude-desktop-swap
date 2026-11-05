@@ -135,7 +135,7 @@ func (m pickerModel) View() string {
 		padRight("ACCOUNT", accountWidth),
 		padRight("PLAN", planWidth),
 		padRight("HEALTH", healthWidth),
-		padRight("EXPIRES", expiresWidth),
+		padRight("LOGIN EXPIRES", expiresWidth),
 		padRight("LAST", lastWidth),
 	)))
 	b.WriteString("\n")
@@ -174,7 +174,7 @@ func (m pickerModel) columnWidths() (accountWidth, planWidth, healthWidth, expir
 	accountWidth = lipgloss.Width("ACCOUNT")
 	planWidth = lipgloss.Width("PLAN")
 	healthWidth = lipgloss.Width("HEALTH")
-	expiresWidth = lipgloss.Width("EXPIRES")
+	expiresWidth = lipgloss.Width("LOGIN EXPIRES")
 	lastWidth = lipgloss.Width("LAST")
 
 	for _, p := range m.profiles {

@@ -1,5 +1,7 @@
 package account
 
+import "github.com/FranCalveyra/claude-desktop-swap/internal/profile"
+
 // Info holds live account metadata fetched from the Claude.ai API.
 type Info struct {
 	Email string
@@ -8,4 +10,6 @@ type Info struct {
 	// (HTTP 401), as opposed to the lookup failing for an indeterminate
 	// reason (offline, unsupported platform, transient network error).
 	Rejected bool
+	// FiveHour and SevenDay are the plan's rolling usage limits.
+	FiveHour, SevenDay profile.UsageWindow
 }

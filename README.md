@@ -141,7 +141,9 @@ The active profile is tracked at `~/.claude-swap/current`, but `status` identifi
 
 ## Session expiry
 
-`list`, `status`, and the `use` picker show an `EXPIRES` column derived from the `sessionKey` cookie's own expiry, and `save`/`use` print a warning when a session has 7 days or less left. The `sessionKey` is a sliding ~28-day token that Claude renews whenever you use that account, so reaching the 7-day window means the profile has gone roughly three weeks untouched.
+`list` also shows when the 5-hour and 7-day usage limits reset (`5H RESET`, `7D RESET`, with the share already used), fetched live from claude.ai.
+
+`list`, `status`, and the `use` picker show a `LOGIN EXPIRES` column derived from the `sessionKey` cookie's own expiry, and `save`/`use` print a warning when a session has 7 days or less left. The `sessionKey` is a sliding ~28-day token that Claude renews whenever you use that account, so reaching the 7-day window means the profile has gone roughly three weeks untouched.
 
 Expiry is advisory, never a block: a session expiring tomorrow is still perfectly usable and still switches. A profile shows `-` when no deadline is known — a non-persistent cookie or an unreadable database — and no warning is invented from missing data. When the server has already rejected a session, that verdict wins over whatever the local cookie claims.
 

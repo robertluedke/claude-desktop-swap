@@ -112,6 +112,15 @@ type Meta struct {
 	// sessionKey slides, so a value written at save time would be stale
 	// and would under-report how long the profile actually has.
 	SessionExpiresAt time.Time `json:"-"`
+	// FiveHour and SevenDay are live usage limits, stale the moment they are
+	// read, so they are never persisted either.
+	FiveHour UsageWindow `json:"-"`
+	SevenDay UsageWindow `json:"-"`
+}
+
+type UsageWindow struct {
+	Percent  float64
+	ResetsAt time.Time
 }
 
 type Store struct {

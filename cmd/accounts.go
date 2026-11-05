@@ -30,6 +30,7 @@ func applyLiveAccounts(profiles []profile.Meta, infos map[string]account.Info) {
 		if info.Plan != "" {
 			profiles[i].Plan = info.Plan
 		}
+		profiles[i].FiveHour, profiles[i].SevenDay = info.FiveHour, info.SevenDay
 		if info.Rejected {
 			profiles[i].ObservedHealth = profile.HealthExpired
 		}
