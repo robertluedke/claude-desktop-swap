@@ -3,9 +3,9 @@
 
   # claude-desktop-swap
 
-  [![CI](https://github.com/FranCalveyra/claude-desktop-swap/actions/workflows/ci.yml/badge.svg)](https://github.com/FranCalveyra/claude-desktop-swap/actions/workflows/ci.yml)
-  [![Release](https://img.shields.io/github/v/release/FranCalveyra/claude-desktop-swap)](https://github.com/FranCalveyra/claude-desktop-swap/releases/latest)
-  [![Go version](https://img.shields.io/github/go-mod/go-version/FranCalveyra/claude-desktop-swap)](go.mod)
+  [![CI](https://github.com/robertluedke/claude-desktop-swap/actions/workflows/ci.yml/badge.svg)](https://github.com/robertluedke/claude-desktop-swap/actions/workflows/ci.yml)
+  [![Release](https://img.shields.io/github/v/release/robertluedke/claude-desktop-swap)](https://github.com/robertluedke/claude-desktop-swap/releases/latest)
+  [![Go version](https://img.shields.io/github/go-mod/go-version/robertluedke/claude-desktop-swap)](go.mod)
   [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 </div>
 
@@ -31,13 +31,13 @@ Download the latest binary for your platform from the [releases page](../../rele
 
 **macOS (Apple Silicon)**
 ```sh
-curl -L https://github.com/FranCalveyra/claude-desktop-swap/releases/latest/download/claude-desktop-swap_darwin_arm64.tar.gz | tar xz
+curl -L https://github.com/robertluedke/claude-desktop-swap/releases/latest/download/claude-desktop-swap_darwin_arm64.tar.gz | tar xz
 sudo mv claude-desktop-swap /usr/local/bin/
 ```
 
 **macOS (Intel)**
 ```sh
-curl -L https://github.com/FranCalveyra/claude-desktop-swap/releases/latest/download/claude-desktop-swap_darwin_amd64.tar.gz | tar xz
+curl -L https://github.com/robertluedke/claude-desktop-swap/releases/latest/download/claude-desktop-swap_darwin_amd64.tar.gz | tar xz
 sudo mv claude-desktop-swap /usr/local/bin/
 ```
 
@@ -45,7 +45,7 @@ sudo mv claude-desktop-swap /usr/local/bin/
 ```powershell
 $dir = "$env:LOCALAPPDATA\Programs\claude-desktop-swap"
 New-Item -ItemType Directory -Force -Path $dir | Out-Null
-Invoke-WebRequest -Uri https://github.com/FranCalveyra/claude-desktop-swap/releases/latest/download/claude-desktop-swap_windows_amd64.zip -OutFile "$env:TEMP\cds.zip"
+Invoke-WebRequest -Uri https://github.com/robertluedke/claude-desktop-swap/releases/latest/download/claude-desktop-swap_windows_amd64.zip -OutFile "$env:TEMP\cds.zip"
 Expand-Archive -Path "$env:TEMP\cds.zip" -DestinationPath $dir -Force
 [Environment]::SetEnvironmentVariable("Path", [Environment]::GetEnvironmentVariable("Path", "User") + ";$dir", "User")
 ```
@@ -55,7 +55,9 @@ Open a new terminal afterwards so the updated `Path` takes effect. On Arm device
 ### Build from source
 
 ```sh
-go install github.com/FranCalveyra/claude-desktop-swap@latest
+git clone https://github.com/robertluedke/claude-desktop-swap.git
+cd claude-desktop-swap
+go build -o claude-desktop-swap .
 ```
 
 ## Usage
