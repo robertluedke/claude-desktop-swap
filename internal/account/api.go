@@ -24,6 +24,7 @@ var defaultClient = &http.Client{Timeout: 10 * time.Second}
 // orgResponse covers the known shapes of the /api/organizations response.
 type orgResponse struct {
 	Capabilities json.RawMessage `json:"capabilities"`
+	RavenType    string          `json:"raven_type"`
 	Settings     struct {
 		Tier string `json:"tier"`
 	} `json:"settings"`

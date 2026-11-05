@@ -94,6 +94,7 @@ Claude Desktop uses `v10` cookies (AES-256-GCM, 12-byte nonce after the
 prefix), not App-Bound `v20`, and the Cookies DB is version 24, so the
 plaintext carries a 32-byte domain-hash prefix. `internal/account/windows.go`
 decrypts this for account email/plan and the post-restore server check.
+Team/Enterprise orgs report their plan in `raven_type`.
 
 ## 7. Denylist
 

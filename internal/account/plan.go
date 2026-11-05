@@ -17,6 +17,10 @@ func parsePlan(org orgResponse) string {
 	if org.BillingInfo.Plan != "" {
 		return normalizePlan(org.BillingInfo.Plan)
 	}
+	// Team and Enterprise orgs ("raven") report the plan only here.
+	if org.RavenType != "" {
+		return normalizePlan(org.RavenType)
+	}
 	// capabilities as {"claude_pro": true, ...}
 	var capsBool map[string]bool
 	if json.Unmarshal(org.Capabilities, &capsBool) == nil {

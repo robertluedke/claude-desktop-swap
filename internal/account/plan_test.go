@@ -23,6 +23,7 @@ func TestParsePlanAcrossAPIShapes(t *testing.T) {
 		{"unknown tier passthrough", orgResponse{Settings: struct {
 			Tier string `json:"tier"`
 		}{Tier: "custom"}}, "custom"},
+		{"raven team", orgResponse{RavenType: "team", Capabilities: json.RawMessage(`["chat","raven"]`)}, "Team"},
 		{"empty", orgResponse{}, ""},
 	}
 	for _, tt := range tests {
