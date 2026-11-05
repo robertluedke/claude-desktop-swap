@@ -11,6 +11,14 @@
 
 Switch between multiple Claude Desktop accounts without logging out of any of them.
 
+> **This is an updated fork** of [FranCalveyra/claude-desktop-swap](https://github.com/FranCalveyra/claude-desktop-swap) with new features and fixes:
+>
+> - **Current Windows Store builds:** finds Claude's app-data in `%LOCALAPPDATA%\Claude-Data\claude_pzs8sxrjxfjjc`.
+> - **Shared Claude Code sessions:** `link-code-sessions` / `unlink-code-sessions` let several accounts show and continue the same sidebar sessions ([details](#shared-claude-code-sessions)).
+> - **Account info on Windows:** `list` shows email and plan on Windows too, including Team and Enterprise plans, and `use` verifies the restored session with the server.
+> - **Usage limits in `list`:** new `5H RESET` and `7D RESET` columns show when the 5-hour and 7-day limits reset and how much is used; `EXPIRES` is now `LOGIN EXPIRES`.
+> - **More reliable `add`:** if the new login has not reached the disk yet, Claude is relaunched instead of the command failing.
+
 ## How it works
 
 Claude Desktop is an Electron app whose whole app-data directory carries the signed-in state — the `Cookies` SQLite database, Local Storage, IndexedDB, Session Storage, and `config.json`. `claude-desktop-swap` stores a filtered mirror of that entire tree as a named profile and swaps it only after Claude and its helper processes have fully stopped.
