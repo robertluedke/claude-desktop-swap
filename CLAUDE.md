@@ -113,18 +113,19 @@ Chromium encrypts cookie values using the OS keychain. On the **same machine**, 
 
 **Exception — account info (`internal/account`):** the `list`/picker account-info feature and the post-restore verification in `use` decrypt the `sessionKey` in memory to call the claude.ai API (for email/plan, and to detect a server-rejected session). This is the only place decryption is allowed. It is transient (never written to disk), only the resulting email/plan/rejection status are persisted, and the raw session is never stored.
 
-This exception is **macOS-only**: the decryptor reads the key from the macOS
-keychain, and `internal/account` is built behind `//go:build darwin` with a
-no-op fallback elsewhere. Windows would need DPAPI (`Local State` carries a
-`DPAPI`-prefixed `os_crypt.encrypted_key`), which is not implemented — so on
-Windows `list` shows no email/plan and `use` skips the server check.
+The decryptor is per-platform: macOS reads the key from the keychain
+(AES-128-CBC); Windows unwraps `Local State`'s `DPAPI`-prefixed
+`os_crypt.encrypted_key` with `CryptUnprotectData` and opens `v10` cookies as
+AES-256-GCM (12-byte nonce). Each profile snapshot carries its own
+`Local State`, so the Windows key is resolved from the tree the Cookies file
+sits in. Other platforms get a no-op fallback.
 
 ## Security Notes
 
 - Never log or print cookie values.
 - Profile directories should be created with `0700` permissions.
 - Never store decrypted session data anywhere (email/plan derived from the account API is not session data and may be cached in `meta.json`).
-- The account-info feature is the only component that decrypts a cookie value and the only one that makes network calls. `save`, `list`'s own file operations, and the restore/mirror mechanics in `use` stay fully local — but `use` is **not** 100% offline end-to-end: after restoring, it calls the claude.ai API (macOS only) to confirm the server accepts the restored session, and fails clearly instead of launching a session the server will reject. This call is best-effort and silently skipped off macOS or when offline; only an explicit 401 blocks the switch.
+- The account-info feature is the only component that decrypts a cookie value and the only one that makes network calls. `save`, `list`'s own file operations, and the restore/mirror mechanics in `use` stay fully local — but `use` is **not** 100% offline end-to-end: after restoring, it calls the claude.ai API (macOS and Windows) to confirm the server accepts the restored session, and fails clearly instead of launching a session the server will reject. This call is best-effort and silently skipped on unsupported platforms or when offline; only an explicit 401 blocks the switch.
 
 ## Testing
 

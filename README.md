@@ -167,7 +167,7 @@ Claude Desktop stores its cookie database under `Network\Cookies` on Windows and
 - Claude Code installs its own `claude.exe` inside `%APPDATA%\Claude`. Profile switching matches processes by executable path, not image name, so running CLI sessions are left alone.
 - Windows Claude holds the live cookie database open denying all sharing, so its expiry cannot be read while the app runs — `status` shows the active profile but reports the session expiry as `-`. Quit Claude to see it. `save` and `use` are unaffected because they stop the app first.
 
-Account email and plan (`list --accounts`, and the post-restore server check in `use`) remain macOS-only: they need the cookie decryption key, which is read from the macOS keychain and has no Windows equivalent implemented yet.
+Account email and plan (`list`, and the post-restore server check in `use`) work on macOS and Windows: the cookie key is read from the macOS keychain, or on Windows unwrapped from `Local State` via DPAPI for the current user.
 
 ## Security
 

@@ -90,10 +90,10 @@ the forced fallback after a 5-second poll.
 `RFBBUEk` = `"DPAPI"`), mirroring the macOS keychain arrangement. Since the
 swap path never decrypts anything, this does not affect save/restore.
 
-It is **not implemented**, so account email/plan and the post-restore server
-check in `use` remain macOS-only. Whether cookies use v10 (AES-GCM) or
-App-Bound v20 was never determined — the database is locked while the app runs
-and reading it would require stopping Claude first.
+Claude Desktop uses `v10` cookies (AES-256-GCM, 12-byte nonce after the
+prefix), not App-Bound `v20`, and the Cookies DB is version 24, so the
+plaintext carries a 32-byte domain-hash prefix. `internal/account/windows.go`
+decrypts this for account email/plan and the post-restore server check.
 
 ## 7. Denylist
 
