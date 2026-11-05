@@ -64,12 +64,26 @@ new session as <name>. No manual logout required.`,
 			return err
 		}
 
-		fmt.Printf("\nLog in as the new account in Claude Desktop, then press Enter to snapshot it as %q: ", name)
-		_, _ = bufio.NewReader(os.Stdin).ReadString('\n')
+		stdin := bufio.NewReader(os.Stdin)
+		fmt.Printf("\nLog in as the new account in Claude Desktop, wait about 30 seconds, then press Enter to snapshot it as %q: ", name)
+		for {
+			_, _ = stdin.ReadString('\n')
 
-		fmt.Println("Stopping Claude Desktop...")
-		if err := p.KillApp(); err != nil {
-			return err
+			fmt.Println("Stopping Claude Desktop...")
+			if err := p.KillApp(); err != nil {
+				return err
+			}
+			// Chromium commits new cookies to disk only every ~30s, and Claude
+			// hides to the tray on close so KillApp ends in a forced kill: a
+			// fresh login can be lost. Relaunch instead of aborting in a wiped state.
+			if profile.HasActiveSession(appData) {
+				break
+			}
+			fmt.Println("No signed-in session found on disk yet. Relaunching Claude Desktop...")
+			if err := p.LaunchApp(); err != nil {
+				return err
+			}
+			fmt.Printf("\nMake sure you are logged in, wait about 30 seconds, then press Enter (Ctrl+C to abort): ")
 		}
 
 		if err := store.Checkpoint(name, appData); err != nil {
