@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 )
@@ -338,5 +339,42 @@ func TestMoveSessionsOutOfLinkedSet(t *testing.T) {
 	}
 	if links, _ := s.LoadSessionLinks(); slices.Contains(links.Links[0].Sessions, "local_p1.json") {
 		t.Fatalf("personal still owns the moved session: %v", links.Links[0].Sessions)
+	}
+}
+
+func TestSessionCommandsRejectUnknownOrIncompleteProfilesUpFront(t *testing.T) {
+	s, appData := sessionFixture(t)
+	writeTestFile(t, filepath.Join(s.profileDir("blank"), configFile), `{}`)
+	writeTestFile(t, filepath.Join(s.profileDir("twin"), configFile), `{"lastKnownAccountUuid":"`+accA+`","dxt:allowlistEnabled:`+orgA+`":true}`)
+	root := filepath.Join(appData, sessionsDirName)
+	before, _ := sessionFiles(filepath.Join(root, accB, orgB))
+
+	for _, tt := range []struct {
+		name, want string
+		err        error
+	}{
+		{"link unknown", "not found", s.ValidateLink("work", []string{"missing"})},
+		{"link unknown primary", "not found", s.ValidateLink("missing", []string{"personal"})},
+		{"link not captured", "no account id", s.ValidateLink("work", []string{"blank"})},
+		{"link same account", "same account", s.ValidateLink("work", []string{"twin"})},
+		{"link primary twice", "primary", s.ValidateLink("work", []string{"work"})},
+		{"unlink unknown", "not found", s.ValidateUnlink([]string{"missing"})},
+		{"unlink not linked", "not linked", s.ValidateUnlink([]string{"personal"})},
+		{"move unknown from", "not found", s.ValidateMove("missing", "work")},
+		{"move unknown to", "not found", s.ValidateMove("personal", "missing")},
+		{"move not captured", "no account id", s.ValidateMove("personal", "blank")},
+		{"move same account", "same account", s.ValidateMove("work", "twin")},
+		{"move via store", "not found", s.MoveSessions(appData, "personal", "missing", before)},
+		{"link via store", "not found", s.LinkSessions(appData, "work", []string{"personal", "missing"})},
+	} {
+		if tt.err == nil || !strings.Contains(tt.err.Error(), tt.want) {
+			t.Errorf("%s: err = %v, want %q", tt.name, tt.err, tt.want)
+		}
+	}
+	if after, _ := sessionFiles(filepath.Join(root, accB, orgB)); !slices.Equal(after, before) {
+		t.Fatalf("a rejected command changed sessions: %v -> %v", before, after)
+	}
+	if links, _ := s.LoadSessionLinks(); links.Primary != "" {
+		t.Fatalf("a rejected link was recorded: %+v", links)
 	}
 }

@@ -24,6 +24,9 @@ the same sessions. Cowork sessions are not affected. A backup is written to
 		if err != nil {
 			return err
 		}
+		if err := store.ValidateLink(args[0], args[1:]); err != nil {
+			return err
+		}
 		return withAppStopped(platform.Current(), os.Stdout, func(appData string) error {
 			if err := store.LinkSessions(appData, args[0], args[1:]); err != nil {
 				return err
@@ -43,6 +46,9 @@ primary profile keeps its own plus every session created while linked.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		store, err := profile.NewStore()
 		if err != nil {
+			return err
+		}
+		if err := store.ValidateUnlink(args); err != nil {
 			return err
 		}
 		return withAppStopped(platform.Current(), os.Stdout, func(appData string) error {
@@ -70,6 +76,9 @@ profiles the move is recorded, so a later unlink keeps them with --to.`,
 		to, _ := cmd.Flags().GetString("to")
 		store, err := profile.NewStore()
 		if err != nil {
+			return err
+		}
+		if err := store.ValidateMove(from, to); err != nil {
 			return err
 		}
 		p := platform.Current()

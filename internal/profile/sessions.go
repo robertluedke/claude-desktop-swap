@@ -47,7 +47,7 @@ type SessionLink struct {
 // per-org dxt allowlist key is the only place the active org is recorded.
 func (s *Store) sessionDir(name string) (string, error) {
 	if !s.Exists(name) {
-		return "", fmt.Errorf("profile %q does not exist", name)
+		return "", errProfileNotFound(name)
 	}
 	data, err := os.ReadFile(filepath.Join(s.profileDir(name), configFile))
 	if err != nil {
@@ -89,16 +89,78 @@ func (s *Store) saveSessionLinks(links SessionLinks) error {
 	return writeJSONAtomic(path, links)
 }
 
-// LinkSessions makes every profile in others share primary's Claude Code
-// sessions: their archived indexes are merged and all session directories are
-// synced. Claude Desktop must not be running.
-func (s *Store) LinkSessions(appDataPath, primary string, others []string) error {
+func errProfileNotFound(name string) error {
+	return fmt.Errorf("profile %q not found — run 'claude-desktop-swap list' to see available profiles", name)
+}
+
+// ValidateLink, ValidateUnlink and ValidateMove check every named profile up
+// front, so a typo fails before Claude Desktop is stopped or a file changes.
+func (s *Store) ValidateLink(primary string, others []string) error {
 	links, err := s.LoadSessionLinks()
 	if err != nil {
 		return err
 	}
 	if links.Primary != "" && links.Primary != primary {
 		return fmt.Errorf("sessions are already linked to %q; run unlink-code-sessions first", links.Primary)
+	}
+	if slices.Contains(others, primary) {
+		return fmt.Errorf("%q is the primary profile", primary)
+	}
+	seen := map[string]string{}
+	for _, name := range append([]string{primary}, others...) {
+		dir, err := s.sessionDir(name)
+		if err != nil {
+			return err
+		}
+		if prev, ok := seen[dir]; ok && prev != name {
+			return fmt.Errorf("%q and %q are the same account", prev, name)
+		}
+		seen[dir] = name
+	}
+	return nil
+}
+
+func (s *Store) ValidateUnlink(names []string) error {
+	links, err := s.LoadSessionLinks()
+	if err != nil {
+		return err
+	}
+	for _, name := range names {
+		if !s.Exists(name) {
+			return errProfileNotFound(name)
+		}
+		if !slices.ContainsFunc(links.Links, func(l SessionLink) bool { return l.Profile == name }) {
+			return fmt.Errorf("profile %q is not linked", name)
+		}
+	}
+	return nil
+}
+
+func (s *Store) ValidateMove(from, to string) error {
+	fromRel, err := s.sessionDir(from)
+	if err != nil {
+		return err
+	}
+	toRel, err := s.sessionDir(to)
+	if err != nil {
+		return err
+	}
+	if from == to || fromRel == toRel {
+		return fmt.Errorf("%q and %q are the same account", from, to)
+	}
+	return nil
+}
+
+// LinkSessions makes every profile in others share primary's Claude Code
+// sessions: their archived indexes are merged and all session directories are
+// synced. Claude Desktop must not be running.
+func (s *Store) LinkSessions(appDataPath, primary string, others []string) error {
+	if err := s.ValidateLink(primary, others); err != nil {
+		return err
+	}
+	links, err := s.LoadSessionLinks()
+	if err != nil {
+		return err
 	}
 	primaryDir, err := s.sessionDir(primary)
 	if err != nil {
@@ -117,18 +179,12 @@ func (s *Store) LinkSessions(appDataPath, primary string, others []string) error
 	}
 
 	for _, name := range others {
-		if name == primary {
-			return fmt.Errorf("%q is the primary profile", name)
-		}
 		if slices.ContainsFunc(links.Links, func(l SessionLink) bool { return l.Profile == name }) {
 			continue
 		}
 		dir, err := s.sessionDir(name)
 		if err != nil {
 			return err
-		}
-		if dir == primaryDir {
-			return fmt.Errorf("%q and %q are the same account", name, primary)
 		}
 		path := filepath.Join(root, dir)
 		if err := realDir(path); err != nil {
@@ -166,6 +222,10 @@ func (s *Store) UnlinkSessions(appDataPath string, names []string) ([]UnlinkResu
 			names = append(names, l.Profile)
 		}
 	}
+	names = slices.Compact(slices.Sorted(slices.Values(names)))
+	if err := s.ValidateUnlink(names); err != nil {
+		return nil, err
+	}
 	if err := s.SyncSessions(appDataPath); err != nil {
 		return nil, err
 	}
@@ -174,9 +234,6 @@ func (s *Store) UnlinkSessions(appDataPath string, names []string) ([]UnlinkResu
 	var done []UnlinkResult
 	for _, name := range names {
 		i := slices.IndexFunc(links.Links, func(l SessionLink) bool { return l.Profile == name })
-		if i < 0 {
-			return done, fmt.Errorf("profile %q is not linked", name)
-		}
 		link := links.Links[i]
 		own := func(file string) bool { return slices.Contains(link.Sessions, file) }
 		result := UnlinkResult{Profile: name, Primary: primary}
@@ -450,8 +507,8 @@ func (l SessionLinks) owner(name string) func(file string) bool {
 // synced with from. Either way a later unlink keeps them with to.
 // Claude Desktop must not be running.
 func (s *Store) MoveSessions(appDataPath, from, to string, files []string) error {
-	if from == to {
-		return fmt.Errorf("cannot move sessions from %q to itself", from)
+	if err := s.ValidateMove(from, to); err != nil {
+		return err
 	}
 	fromRel, err := s.sessionDir(from)
 	if err != nil {
@@ -460,9 +517,6 @@ func (s *Store) MoveSessions(appDataPath, from, to string, files []string) error
 	toRel, err := s.sessionDir(to)
 	if err != nil {
 		return err
-	}
-	if fromRel == toRel {
-		return fmt.Errorf("%q and %q are the same account", from, to)
 	}
 	if err := s.SyncSessions(appDataPath); err != nil {
 		return err
