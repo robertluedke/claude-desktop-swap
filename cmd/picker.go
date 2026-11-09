@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -12,10 +13,11 @@ import (
 )
 
 var (
-	pickerTitleStyle  = lipgloss.NewStyle().Bold(true)
-	pickerHeaderStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
-	pickerHelpStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
-	pickerBadgeStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("10"))
+	pickerTitleStyle   = lipgloss.NewStyle().Bold(true)
+	pickerHeaderStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+	pickerHelpStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+	pickerBadgeStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("10"))
+	pickerSectionStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("12"))
 )
 
 type pickerModel struct {
@@ -220,6 +222,194 @@ func relativeLastUsed(t time.Time) string {
 		return fmt.Sprintf("%dh ago", int(elapsed.Hours()))
 	}
 	return fmt.Sprintf("%dd ago", int(elapsed.Hours()/24))
+}
+
+type choiceModel struct {
+	title   string
+	options []string
+	cursor  int
+	chosen  int
+	done    bool
+}
+
+func runChoice(title string, options []string) (int, error) {
+	final, err := tea.NewProgram(choiceModel{title: title, options: options, chosen: -1}).Run()
+	if err != nil {
+		return -1, err
+	}
+	return final.(choiceModel).chosen, nil
+}
+
+func (m choiceModel) Init() tea.Cmd { return nil }
+
+func (m choiceModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if key, ok := msg.(tea.KeyMsg); ok {
+		switch key.String() {
+		case "ctrl+c", "esc", "q":
+			m.done = true
+			return m, tea.Quit
+		case "up", "k":
+			m.cursor = max(m.cursor-1, 0)
+		case "down", "j":
+			m.cursor = min(m.cursor+1, len(m.options)-1)
+		case "enter":
+			m.chosen, m.done = m.cursor, true
+			return m, tea.Quit
+		}
+	}
+	return m, nil
+}
+
+func (m choiceModel) View() string {
+	if m.done {
+		return ""
+	}
+	var b strings.Builder
+	b.WriteString("  " + pickerHelpStyle.Render("↑/↓ choose · Enter confirm · Esc cancel") + "\n\n")
+	b.WriteString("  " + pickerTitleStyle.Render(m.title) + "\n\n")
+	for i, o := range m.options {
+		cursor := " "
+		if i == m.cursor {
+			cursor = ">"
+		}
+		fmt.Fprintf(&b, "  %s %s\n", cursor, o)
+	}
+	return b.String()
+}
+
+type sessionPickerModel struct {
+	title     string
+	sessions  []profile.SessionInfo
+	selected  map[int]bool
+	cursor    int
+	offset    int
+	height    int
+	confirmed bool
+	done      bool
+}
+
+func runSessionPicker(title string, sessions []profile.SessionInfo) ([]string, error) {
+	final, err := tea.NewProgram(sessionPickerModel{title: title, sessions: sessions, selected: map[int]bool{}}).Run()
+	if err != nil {
+		return nil, err
+	}
+	m := final.(sessionPickerModel)
+	if !m.confirmed {
+		return nil, nil
+	}
+	return m.selectedFiles(), nil
+}
+
+func (m sessionPickerModel) Init() tea.Cmd { return nil }
+
+func (m sessionPickerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		m.height = msg.Height
+	case tea.KeyMsg:
+		switch msg.String() {
+		case "ctrl+c", "esc", "q":
+			m.done = true
+			return m, tea.Quit
+		case "up", "k":
+			m.cursor = max(m.cursor-1, 0)
+		case "down", "j":
+			m.cursor = min(m.cursor+1, len(m.sessions)-1)
+		case " ", "space":
+			m.selected[m.cursor] = !m.selected[m.cursor]
+		case "enter":
+			if len(m.selectedFiles()) == 0 {
+				return m, nil
+			}
+			m.confirmed, m.done = true, true
+			return m, tea.Quit
+		}
+	}
+	if m.cursor < m.offset {
+		m.offset = m.cursor
+	}
+	for m.offset < m.cursor && m.linesFor(m.offset, m.cursor) > m.visibleRows() {
+		m.offset++
+	}
+	return m, nil
+}
+
+func (m sessionPickerModel) sectionStarts(i, from int) bool {
+	return i == from || m.sessions[i].Section != m.sessions[i-1].Section
+}
+
+// linesFor counts the screen lines rows from..to take, including the header
+// shown above the first row of each section.
+func (m sessionPickerModel) linesFor(from, to int) int {
+	n := 0
+	for i := from; i <= to; i++ {
+		if m.sectionStarts(i, from) {
+			n++
+		}
+		n++
+	}
+	return n
+}
+
+func (m sessionPickerModel) selectedFiles() []string {
+	var files []string
+	for i, s := range m.sessions {
+		if m.selected[i] {
+			files = append(files, s.File)
+		}
+	}
+	return files
+}
+
+// visibleRows leaves room for the help, title and blank lines around the list.
+func (m sessionPickerModel) visibleRows() int {
+	if m.height == 0 {
+		return 2 * len(m.sessions)
+	}
+	return max(m.height-6, 3)
+}
+
+func (m sessionPickerModel) View() string {
+	if m.done {
+		return ""
+	}
+	var b strings.Builder
+	b.WriteString("  " + pickerHelpStyle.Render("↑/↓ move · Space select · Enter move selected · Esc cancel") + "\n\n")
+	b.WriteString("  " + pickerTitleStyle.Render(fmt.Sprintf("%s (%d selected)", m.title, len(m.selectedFiles()))) + "\n\n")
+	counts := map[string]int{}
+	for _, s := range m.sessions {
+		counts[s.Section]++
+	}
+	end := m.offset
+	for end < len(m.sessions) && m.linesFor(m.offset, end) <= m.visibleRows() {
+		end++
+	}
+	for i := m.offset; i < end; i++ {
+		s := m.sessions[i]
+		if m.sectionStarts(i, m.offset) {
+			b.WriteString("  " + pickerSectionStyle.Render(fmt.Sprintf("%s (%d)", s.Section, counts[s.Section])) + "\n")
+		}
+		cursor, box := " ", "[ ]"
+		if i == m.cursor {
+			cursor = ">"
+		}
+		if m.selected[i] {
+			box = "[x]"
+		}
+		title := s.Title
+		if title == "" {
+			title = s.File
+		}
+		folder := ""
+		if s.Cwd != "" && filepath.Base(s.Cwd) != s.Section {
+			folder = "  " + pickerHeaderStyle.Render(filepath.Base(s.Cwd))
+		}
+		fmt.Fprintf(&b, "  %s %s %s  %s%s\n", cursor, box, s.LastActivity.Format("2006-01-02 15:04"), title, folder)
+	}
+	if end < len(m.sessions) {
+		b.WriteString("  " + pickerHelpStyle.Render(fmt.Sprintf("… %d more", len(m.sessions)-end)) + "\n")
+	}
+	return b.String()
 }
 
 func padRight(s string, width int) string {

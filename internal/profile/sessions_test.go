@@ -199,3 +199,144 @@ func TestLinkSessionsRejectsUnknownProfile(t *testing.T) {
 		t.Fatal("expected error for missing profile")
 	}
 }
+
+func TestListSessionsGroupsBySidebarSection(t *testing.T) {
+	s, appData := sessionFixture(t)
+	dir := filepath.Join(appData, sessionsDirName, accB, orgB)
+	writeTestFile(t, filepath.Join(dir, "local_p1.json"), `{"title":"one","lastActivityAt":1000}`)
+	writeTestFile(t, filepath.Join(dir, "local_p2.json"), `{"title":"two","lastActivityAt":3000,"cwd":"C:/src/app/sub","gitAnchors":{"gitRoot":"C:/src/app"}}`)
+	writeTestFile(t, filepath.Join(dir, "local_p3.json"), `{"title":"three","lastActivityAt":2000}`)
+	writeTestFile(t, filepath.Join(dir, "local_p4.json"), `{"title":"four","lastActivityAt":4000,"cwd":"C:/src/tool"}`)
+	writeTestFile(t, filepath.Join(dir, "local_p5.json"), `{"title":"five","lastActivityAt":500,"cwd":"C:/src/app/x","gitAnchors":[{"gitRoot":"C:/src/app"}]}`)
+	scope := accB + "/" + orgB
+	writeTestFile(t, filepath.Join(appData, "claude_desktop_config.json"), `{"preferences":{"epitaxyPrefs":{
+		"dframe-code-sections":{"`+scope+`":{"sections":[
+			{"id":"pinned","kind":"pinned","order":0},
+			{"id":"cg-pax","kind":"manual","name":"PaxBuddy","order":1},
+			{"id":"sessions","kind":"sessions","order":2}]}},
+		"dframe-group-scopes":{"`+scope+`":{"assignments":{"code:local_p1":"cg-pax","code:local_p3":"cg-pax"}}}}}}`)
+
+	got, err := s.ListSessions(appData, "personal")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var rows []string
+	for _, i := range got {
+		rows = append(rows, i.Section+":"+i.Title)
+	}
+	if want := []string{"PaxBuddy:three", "PaxBuddy:one", "tool:four", "app:two", "app:five"}; !slices.Equal(rows, want) {
+		t.Fatalf("rows = %v, want %v", rows, want)
+	}
+
+	if err := os.Remove(filepath.Join(appData, "claude_desktop_config.json")); err != nil {
+		t.Fatal(err)
+	}
+	got, _ = s.ListSessions(appData, "personal")
+	for _, i := range got {
+		if i.File == "local_p3.json" && i.Section != defaultSection {
+			t.Fatalf("session without folder or sidebar config is in %q", i.Section)
+		}
+	}
+}
+
+func TestMoveSessionsBetweenUnlinkedProfiles(t *testing.T) {
+	s, appData := sessionFixture(t)
+	root := filepath.Join(appData, sessionsDirName)
+	work, personal := filepath.Join(root, accA, orgA), filepath.Join(root, accB, orgB)
+	writeTestFile(t, filepath.Join(work, "deleted_p2"), "{}")
+
+	if err := s.MoveSessions(appData, "personal", "work", []string{"local_p2.json"}); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := sessionFiles(personal); !slices.Equal(got, []string{"local_p1.json"}) {
+		t.Fatalf("personal = %v", got)
+	}
+	if got, _ := sessionFiles(work); !slices.Equal(got, []string{"local_p2.json", "local_w1.json"}) {
+		t.Fatalf("work = %v", got)
+	}
+	if got := archivedIDs(t, filepath.Join(work, archivedIndex)); !slices.Equal(got, []string{"local_w0", "local_p2"}) {
+		t.Fatalf("archive did not follow the session: %v", got)
+	}
+	if got := archivedIDs(t, filepath.Join(personal, archivedIndex)); len(got) != 0 {
+		t.Fatalf("personal archive = %v", got)
+	}
+	if _, err := os.Stat(filepath.Join(work, "deleted_p2")); !os.IsNotExist(err) {
+		t.Fatal("stale deletion marker would hide the moved session")
+	}
+	if err := s.MoveSessions(appData, "work", "work", []string{"local_w1.json"}); err == nil {
+		t.Fatal("moving to the same profile must fail")
+	}
+}
+
+func TestMoveSessionsBetweenLinkedProfilesSurvivesUnlink(t *testing.T) {
+	s, appData := sessionFixture(t)
+	root := filepath.Join(appData, sessionsDirName)
+	work, personal := filepath.Join(root, accA, orgA), filepath.Join(root, accB, orgB)
+	if err := s.LinkSessions(appData, "work", []string{"personal"}); err != nil {
+		t.Fatal(err)
+	}
+	listed := func(name string) []string {
+		infos, err := s.ListSessions(appData, name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var files []string
+		for _, i := range infos {
+			files = append(files, i.File)
+		}
+		slices.Sort(files)
+		return files
+	}
+	if got := listed("personal"); !slices.Equal(got, []string{"local_p1.json", "local_p2.json"}) {
+		t.Fatalf("personal owns %v", got)
+	}
+
+	if err := s.MoveSessions(appData, "personal", "work", []string{"local_p1.json"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.MoveSessions(appData, "work", "personal", []string{"local_w1.json"}); err != nil {
+		t.Fatal(err)
+	}
+	if got := listed("personal"); !slices.Equal(got, []string{"local_p2.json", "local_w1.json"}) {
+		t.Fatalf("personal owns %v after move", got)
+	}
+	if got := listed("work"); !slices.Equal(got, []string{"local_p1.json"}) {
+		t.Fatalf("work owns %v after move", got)
+	}
+	if got, _ := sessionFiles(work); len(got) != 3 {
+		t.Fatalf("linked copies should stay while linked: %v", got)
+	}
+
+	if _, err := s.UnlinkSessions(appData, nil); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := sessionFiles(personal); !slices.Equal(got, []string{"local_p2.json", "local_w1.json"}) {
+		t.Fatalf("personal after unlink = %v", got)
+	}
+	if got, _ := sessionFiles(work); !slices.Equal(got, []string{"local_p1.json"}) {
+		t.Fatalf("work after unlink = %v", got)
+	}
+}
+
+func TestMoveSessionsOutOfLinkedSet(t *testing.T) {
+	s, appData := sessionFixture(t)
+	writeTestFile(t, filepath.Join(s.profileDir("other"), configFile), `{"lastKnownAccountUuid":"cccccccc-0000-0000-0000-000000000000","dxt:allowlistEnabled:33333333-0000-0000-0000-000000000000":true}`)
+	if err := s.LinkSessions(appData, "work", []string{"personal"}); err != nil {
+		t.Fatal(err)
+	}
+	root := filepath.Join(appData, sessionsDirName)
+	if err := s.MoveSessions(appData, "personal", "other", []string{"local_p1.json"}); err != nil {
+		t.Fatal(err)
+	}
+	for _, dir := range []string{filepath.Join(root, accA, orgA), filepath.Join(root, accB, orgB)} {
+		if _, err := os.Stat(filepath.Join(dir, "local_p1.json")); !os.IsNotExist(err) {
+			t.Fatalf("%s kept a copy the next sync would bring back", dir)
+		}
+	}
+	if got, _ := sessionFiles(filepath.Join(root, "cccccccc-0000-0000-0000-000000000000", "33333333-0000-0000-0000-000000000000")); !slices.Equal(got, []string{"local_p1.json"}) {
+		t.Fatalf("other = %v", got)
+	}
+	if links, _ := s.LoadSessionLinks(); slices.Contains(links.Links[0].Sessions, "local_p1.json") {
+		t.Fatalf("personal still owns the moved session: %v", links.Links[0].Sessions)
+	}
+}

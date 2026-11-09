@@ -1,6 +1,7 @@
 package profile
 
 import (
+	"cmp"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -279,6 +280,268 @@ func (s *Store) SyncSessions(appDataPath string) error {
 		}
 	}
 	return nil
+}
+
+type SessionInfo struct {
+	File, Title, Cwd string
+	LastActivity     time.Time
+	Section          string
+	SectionOrder     int
+}
+
+const defaultSection = "Sessions"
+
+type sidebarSection struct {
+	name  string
+	order int
+}
+
+// sidebarSections reads which sidebar section each session sits in for one
+// account/org scope. Claude Desktop keeps this in claude_desktop_config.json:
+// dframe-code-sections lists the sections, dframe-group-scopes assigns
+// sessions to the manual ones; unassigned sessions show under "sessions".
+func sidebarSections(appDataPath, scope string) (assigned map[string]sidebarSection, fallback sidebarSection) {
+	fallback = sidebarSection{name: defaultSection}
+	var cfg struct {
+		Preferences struct {
+			Epitaxy struct {
+				Sections map[string]struct {
+					Sections []struct {
+						ID    string `json:"id"`
+						Kind  string `json:"kind"`
+						Name  string `json:"name"`
+						Order int    `json:"order"`
+					} `json:"sections"`
+				} `json:"dframe-code-sections"`
+				Scopes map[string]struct {
+					Assignments map[string]string `json:"assignments"`
+				} `json:"dframe-group-scopes"`
+			} `json:"epitaxyPrefs"`
+		} `json:"preferences"`
+	}
+	data, err := os.ReadFile(filepath.Join(appDataPath, "claude_desktop_config.json"))
+	if err != nil || json.Unmarshal(data, &cfg) != nil {
+		return nil, fallback
+	}
+	byID := map[string]sidebarSection{}
+	for _, sec := range cfg.Preferences.Epitaxy.Sections[scope].Sections {
+		switch sec.Kind {
+		case "manual":
+			byID[sec.ID] = sidebarSection{name: sec.Name, order: sec.Order}
+		case "sessions":
+			fallback.order = sec.Order
+		}
+	}
+	assigned = map[string]sidebarSection{}
+	for key, group := range cfg.Preferences.Epitaxy.Scopes[scope].Assignments {
+		if sec, ok := byID[group]; ok {
+			assigned[strings.TrimPrefix(key, "code:")] = sec
+		}
+	}
+	return assigned, fallback
+}
+
+// ListSessions returns the sessions name owns, grouped like the sidebar:
+// manual sections in their order, then project groups by recency, newest
+// session first within each. While linked, every directory holds copies of
+// all sessions, so ownership comes from the link record: a linked profile
+// owns what it brought in, the primary the rest.
+func (s *Store) ListSessions(appDataPath, name string) ([]SessionInfo, error) {
+	rel, err := s.sessionDir(name)
+	if err != nil {
+		return nil, err
+	}
+	links, err := s.LoadSessionLinks()
+	if err != nil {
+		return nil, err
+	}
+	dir := filepath.Join(appDataPath, sessionsDirName, rel)
+	files, err := sessionFiles(dir)
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return nil, err
+	}
+	owns := links.owner(name)
+	assigned, fallback := sidebarSections(appDataPath, filepath.ToSlash(rel))
+	var out []SessionInfo
+	for _, f := range files {
+		if !owns(f) {
+			continue
+		}
+		var meta struct {
+			Title          string          `json:"title"`
+			Cwd            string          `json:"cwd"`
+			LastActivityAt int64           `json:"lastActivityAt"`
+			GitAnchors     json.RawMessage `json:"gitAnchors"`
+		}
+		data, err := os.ReadFile(filepath.Join(dir, f))
+		if err != nil {
+			return nil, err
+		}
+		info := SessionInfo{File: f}
+		if json.Unmarshal(data, &meta) == nil {
+			info.Title, info.Cwd, info.LastActivity = meta.Title, meta.Cwd, time.UnixMilli(meta.LastActivityAt)
+		}
+		sec, ok := assigned[strings.TrimSuffix(f, ".json")]
+		if !ok {
+			// Outside manual sections the sidebar groups by project, named
+			// after the repository root or, without one, the folder.
+			sec = fallback
+			if project := cmp.Or(gitRoot(meta.GitAnchors), meta.Cwd); project != "" {
+				sec.name = filepath.Base(project)
+			}
+		}
+		info.Section, info.SectionOrder = sec.name, sec.order
+		out = append(out, info)
+	}
+	latest := map[string]time.Time{}
+	for _, i := range out {
+		if i.LastActivity.After(latest[i.Section]) {
+			latest[i.Section] = i.LastActivity
+		}
+	}
+	slices.SortFunc(out, func(a, b SessionInfo) int {
+		if a.SectionOrder != b.SectionOrder {
+			return a.SectionOrder - b.SectionOrder
+		}
+		if a.Section != b.Section {
+			return cmp.Or(latest[b.Section].Compare(latest[a.Section]), strings.Compare(a.Section, b.Section))
+		}
+		return b.LastActivity.Compare(a.LastActivity)
+	})
+	return out, nil
+}
+
+// gitRoot reads gitAnchors, which Claude Desktop writes as one anchor or as a
+// list of them depending on the session.
+func gitRoot(raw json.RawMessage) string {
+	type anchor struct {
+		GitRoot string `json:"gitRoot"`
+	}
+	var one anchor
+	if json.Unmarshal(raw, &one) == nil {
+		return one.GitRoot
+	}
+	var many []anchor
+	if json.Unmarshal(raw, &many) == nil && len(many) > 0 {
+		return many[0].GitRoot
+	}
+	return ""
+}
+
+func (l SessionLinks) linked(name string) bool {
+	return l.Primary != "" && (name == l.Primary || slices.ContainsFunc(l.Links, func(k SessionLink) bool { return k.Profile == name }))
+}
+
+func (l SessionLinks) owner(name string) func(file string) bool {
+	if !l.linked(name) {
+		return func(string) bool { return true }
+	}
+	if i := slices.IndexFunc(l.Links, func(k SessionLink) bool { return k.Profile == name }); i >= 0 {
+		return func(f string) bool { return slices.Contains(l.Links[i].Sessions, f) }
+	}
+	return func(f string) bool {
+		return !slices.ContainsFunc(l.Links, func(k SessionLink) bool { return slices.Contains(k.Sessions, f) })
+	}
+}
+
+// MoveSessions hands the given session files from one profile to another.
+// Between two linked profiles every directory already holds a copy, so only
+// the ownership record changes; otherwise the files leave every directory
+// synced with from. Either way a later unlink keeps them with to.
+// Claude Desktop must not be running.
+func (s *Store) MoveSessions(appDataPath, from, to string, files []string) error {
+	if from == to {
+		return fmt.Errorf("cannot move sessions from %q to itself", from)
+	}
+	fromRel, err := s.sessionDir(from)
+	if err != nil {
+		return err
+	}
+	toRel, err := s.sessionDir(to)
+	if err != nil {
+		return err
+	}
+	if fromRel == toRel {
+		return fmt.Errorf("%q and %q are the same account", from, to)
+	}
+	if err := s.SyncSessions(appDataPath); err != nil {
+		return err
+	}
+	links, err := s.LoadSessionLinks()
+	if err != nil {
+		return err
+	}
+	root := filepath.Join(appDataPath, sessionsDirName)
+	moving := func(f string) bool { return slices.Contains(files, f) }
+
+	if !links.linked(from) || !links.linked(to) {
+		src, dst := filepath.Join(root, fromRel), filepath.Join(root, toRel)
+		if err := realDir(dst); err != nil {
+			return err
+		}
+		archived, err := readArchived(filepath.Join(src, archivedIndex))
+		if err != nil {
+			return err
+		}
+		into, err := readArchived(filepath.Join(dst, archivedIndex))
+		if err != nil {
+			return err
+		}
+		for _, f := range files {
+			info, err := os.Stat(filepath.Join(src, f))
+			if err != nil {
+				return err
+			}
+			if err := copyFile(filepath.Join(src, f), filepath.Join(dst, f)); err != nil {
+				return err
+			}
+			if err := os.Chtimes(filepath.Join(dst, f), info.ModTime(), info.ModTime()); err != nil {
+				return err
+			}
+			id := strings.TrimSuffix(f, ".json")
+			for _, dir := range links.dirsWith(to, toRel) {
+				marker := filepath.Join(root, dir, deletedPrefix+strings.TrimPrefix(id, "local_"))
+				if err := ignoreMissing(os.Remove(marker)); err != nil {
+					return err
+				}
+			}
+			if slices.Contains(archived.ids, id) && !slices.Contains(into.ids, id) {
+				into.ids = append(into.ids, id)
+			}
+		}
+		if err := writeArchived(filepath.Join(dst, archivedIndex), into); err != nil {
+			return err
+		}
+		for _, dir := range links.dirsWith(from, fromRel) {
+			if _, _, err := pruneSessions(filepath.Join(root, dir), func(f string) bool { return !moving(f) }); err != nil {
+				return err
+			}
+		}
+	}
+
+	if links.Primary == "" {
+		return nil
+	}
+	for i := range links.Links {
+		links.Links[i].Sessions = slices.DeleteFunc(links.Links[i].Sessions, moving)
+		if links.Links[i].Profile == to {
+			links.Links[i].Sessions = append(links.Links[i].Sessions, files...)
+		}
+	}
+	return s.saveSessionLinks(links)
+}
+
+// dirsWith returns every session directory synced with name's, or just its
+// own when it is not linked.
+func (l SessionLinks) dirsWith(name, rel string) []string {
+	if !l.linked(name) {
+		return []string{rel}
+	}
+	dirs := []string{l.Dir}
+	for _, k := range l.Links {
+		dirs = append(dirs, k.Dir)
+	}
+	return dirs
 }
 
 func isSessionFile(name string) bool {

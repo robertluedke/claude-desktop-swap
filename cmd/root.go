@@ -38,5 +38,5 @@ func Execute() {
 }
 
 func init() {
-	root.AddCommand(cmdSave, cmdAdd, cmdUse, cmdList, cmdDelete, cmdStatus, cmdLinkSessions, cmdUnlinkSessions)
+	root.AddCommand(cmdSave, cmdAdd, cmdUse, cmdList, cmdDelete, cmdStatus, cmdLinkSessions, cmdUnlinkSessions, cmdMoveSessions)
 }

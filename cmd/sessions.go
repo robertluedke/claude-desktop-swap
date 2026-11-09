@@ -58,6 +58,65 @@ primary profile keeps its own plus every session created while linked.`,
 	},
 }
 
+var cmdMoveSessions = &cobra.Command{
+	Use:   "move-code-sessions --from <profile> --to <profile>",
+	Short: "Move Claude Code sessions from one profile to another",
+	Long: `Asks whether to move all of the --from profile's Claude Code sessions or
+lets you pick them, then hands them to the --to profile. Between linked
+profiles the move is recorded, so a later unlink keeps them with --to.`,
+	Args: cobra.NoArgs,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		from, _ := cmd.Flags().GetString("from")
+		to, _ := cmd.Flags().GetString("to")
+		store, err := profile.NewStore()
+		if err != nil {
+			return err
+		}
+		p := platform.Current()
+		appData, err := p.AppDataPath()
+		if err != nil {
+			return err
+		}
+		sessions, err := store.ListSessions(appData, from)
+		if err != nil {
+			return err
+		}
+		if len(sessions) == 0 {
+			fmt.Printf("%q has no Claude Code sessions to move.\n", from)
+			return nil
+		}
+		mode, err := runChoice(fmt.Sprintf("Move sessions from %q to %q:", from, to), []string{
+			fmt.Sprintf("All sessions (%d)", len(sessions)),
+			"Choose sessions",
+		})
+		if err != nil || mode < 0 {
+			return err
+		}
+		var files []string
+		if mode == 0 {
+			for _, s := range sessions {
+				files = append(files, s.File)
+			}
+		} else if files, err = runSessionPicker(fmt.Sprintf("Sessions of %q", from), sessions); err != nil || len(files) == 0 {
+			return err
+		}
+		return withAppStopped(p, os.Stdout, func(appData string) error {
+			if err := store.MoveSessions(appData, from, to, files); err != nil {
+				return err
+			}
+			fmt.Printf("Moved %s from %q to %q.\n", sessionCount(len(files)), from, to)
+			return nil
+		})
+	},
+}
+
+func init() {
+	cmdMoveSessions.Flags().StringP("from", "f", "", "profile that gives the sessions away")
+	cmdMoveSessions.Flags().StringP("to", "t", "", "profile that receives the sessions")
+	_ = cmdMoveSessions.MarkFlagRequired("from")
+	_ = cmdMoveSessions.MarkFlagRequired("to")
+}
+
 func printUnlinkResult(out io.Writer, r profile.UnlinkResult) {
 	fmt.Fprintf(out, "Unlinked Claude Code sessions of %q from %q:\n", r.Profile, r.Primary)
 	fmt.Fprintf(out, "  %s keeps %s from before the link and drops %s shared while linked.\n", r.Profile, sessionCount(r.Kept), sessionCount(r.Dropped))

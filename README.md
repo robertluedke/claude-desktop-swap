@@ -88,6 +88,8 @@ claude-desktop-swap link-code-sessions work personal
 # Give personal its own Claude Code sessions again
 claude-desktop-swap unlink-code-sessions personal
 
+# Move Claude Code sessions from personal to work (all, or picked interactively)
+claude-desktop-swap move-code-sessions --from personal --to work
 ```
 
 ### Shared Claude Code sessions
@@ -97,6 +99,8 @@ Claude Desktop keeps the sidebar's Claude Code sessions per account and organiza
 Every account keeps a real directory. Claude Desktop refuses to save sessions into a junction or symlink, so a session created there exists only in memory and disappears on the next restart (for example after an auto-update). Older versions of this tool linked the directories that way; the next `use`, `link-code-sessions` or `unlink-code-sessions` replaces such a link with a real directory.
 
 `unlink-code-sessions [profile...]` (all linked profiles if none given) runs a last sync and then stops syncing. Each profile gets back exactly the sessions it had before it was linked (recorded at link time); the primary keeps its own plus every session created while linked, whichever account started it.
+
+`move-code-sessions --from <profile> --to <profile>` (short `-f`/`-t`) first asks whether to move all of the source profile's sessions or to choose them (↑/↓, Enter). When choosing, ↑/↓ moves, Space selects and Enter moves the selection. Between unlinked profiles the session files (and their archived state) move over. Between linked profiles every directory already holds a copy, so only the record of who owns the session changes, and a later `unlink-code-sessions` keeps it with the target. Moving out of a linked group removes the session from every linked directory so the next sync cannot bring it back. Cowork sessions are not affected. Connectors bound to the primary's organization are not available when continuing a session from another account.
 
 ## First-time setup
 
