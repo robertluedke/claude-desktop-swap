@@ -15,7 +15,11 @@ import (
 var cmdList = &cobra.Command{
 	Use:   "list",
 	Short: "List saved profiles",
-	Args:  cobra.NoArgs,
+	Long: `Lists saved profiles with account, plan, usage limits, health and login
+expiry; * marks the active one. Profiles that share Claude Code sessions
+(link-code-sessions) are grouped and bracketed in the CODE LINKED column,
+primary on top.`,
+	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		store, err := profile.NewStore()
 		if err != nil {

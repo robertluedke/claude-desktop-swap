@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- `move-code-sessions --from <profile> --to <profile>` moves all or interactively picked Claude Code sessions to another profile. The picker groups sessions like the sidebar (own sections, then projects). Moves between linked profiles survive a later unlink.
+- `list` has a `CODE LINKED` column that groups and brackets profiles sharing Claude Code sessions.
+- `unlink-code-sessions` prints how many sessions each profile kept and gave up.
+
+### Fixed
+- Sessions created in a linked account were lost on Claude Desktop's next restart: Claude now refuses to save into a junction or symlink. Linked profiles keep real directories that are synced on link and on every `use`; existing junctions are replaced automatically.
+- `unlink-code-sessions` gives each profile back exactly the sessions it had before it was linked; sessions created while linked stay with the primary.
+- `link-code-sessions`, `unlink-code-sessions` and `move-code-sessions` validate every named profile before stopping Claude. A typo no longer leaves a partial link behind, and duplicate names no longer crash unlink.
+
 ## [0.8.0] - 2026-08-02
 
 ### Added

@@ -60,9 +60,12 @@ while the app is stopped; newest mtime wins, so copies keep their source time.
 ```
 claude-desktop-swap save <name>        # snapshot current session as a named profile
 claude-desktop-swap use <name>         # switch to a saved profile (kills + restarts Claude)
-claude-desktop-swap list               # list saved profiles
+claude-desktop-swap list               # list saved profiles; CODE LINKED brackets profiles sharing Claude Code sessions
 claude-desktop-swap delete <name>      # remove a profile
 claude-desktop-swap status             # show which profile is active (if trackable)
+claude-desktop-swap link-code-sessions <primary> <profile>...       # sync Claude Code sessions between profiles
+claude-desktop-swap unlink-code-sessions [profile...]               # stop syncing; each profile gets its pre-link sessions back
+claude-desktop-swap move-code-sessions --from <profile> --to <profile>  # move all or picked sessions to another profile
 ```
 
 ## Rules for Claude

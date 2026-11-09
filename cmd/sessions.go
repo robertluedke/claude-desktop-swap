@@ -68,8 +68,11 @@ var cmdMoveSessions = &cobra.Command{
 	Use:   "move-code-sessions --from <profile> --to <profile>",
 	Short: "Move Claude Code sessions from one profile to another",
 	Long: `Asks whether to move all of the --from profile's Claude Code sessions or
-lets you pick them, then hands them to the --to profile. Between linked
-profiles the move is recorded, so a later unlink keeps them with --to.`,
+lets you pick them, then hands them to the --to profile. The picker groups
+sessions like the sidebar; ↑/↓ moves, Space selects, Enter moves the
+selection, Esc cancels. Claude Desktop is stopped only for the move itself.
+Between linked profiles the move is recorded, so a later unlink keeps them
+with --to. Sidebar section assignments are not carried over.`,
 	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		from, _ := cmd.Flags().GetString("from")

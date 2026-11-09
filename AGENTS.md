@@ -32,8 +32,12 @@ Switching accounts = swapping the `sessionKey`, `sessionKeyLC`, `routingHint`, `
 claude-desktop-swap save <name>        # snapshot current session as a named profile
 claude-desktop-swap add <name>         # add a new account interactively without manual logout
 claude-desktop-swap use [name]         # switch to a saved profile (kills + restarts Claude); no name = interactive picker
-claude-desktop-swap list               # list saved profiles
+claude-desktop-swap list               # list saved profiles; CODE LINKED brackets profiles sharing Claude Code sessions
+claude-desktop-swap status [--check]   # show the active profile; --check reports session expiry via exit code
 claude-desktop-swap delete <name>      # remove a profile
+claude-desktop-swap link-code-sessions <primary> <profile>...       # sync Claude Code sessions between profiles
+claude-desktop-swap unlink-code-sessions [profile...]               # stop syncing; each profile gets its pre-link sessions back
+claude-desktop-swap move-code-sessions --from <profile> --to <profile>  # move all or picked sessions to another profile
 ```
 
 ## Rules for AI agents
