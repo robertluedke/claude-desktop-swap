@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"slices"
 	"text/tabwriter"
 	"time"
 
@@ -44,9 +45,14 @@ var cmdList = &cobra.Command{
 			}
 		}
 		enrichLiveAccounts(store, profiles)
+		links, err := store.LoadSessionLinks()
+		if err != nil {
+			return err
+		}
+		profiles, linked := groupLinked(profiles, links)
 		w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-		fmt.Fprintln(w, "  NAME\tACCOUNT\tPLAN\t5H RESET\t7D RESET\tHEALTH\tLOGIN EXPIRES\tCREATED\tLAST USED")
-		for _, p := range profiles {
+		fmt.Fprintln(w, "  NAME\tACCOUNT\tPLAN\t5H RESET\t7D RESET\tHEALTH\tLOGIN EXPIRES\tCREATED\tLAST USED\tCODE LINKED")
+		for i, p := range profiles {
 			marker := " "
 			if p.Name == current {
 				marker = "*"
@@ -59,7 +65,7 @@ var cmdList = &cobra.Command{
 			if email == "" {
 				email = "-"
 			}
-			fmt.Fprintf(w, "%s %s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
+			fmt.Fprintf(w, "%s %s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
 				marker,
 				p.Name,
 				email,
@@ -70,6 +76,7 @@ var cmdList = &cobra.Command{
 				metaExpiryLabel(p, now),
 				p.CreatedAt.Format("2006-01-02 15:04"),
 				lastUsed,
+				linked[i],
 			)
 		}
 		if err := w.Flush(); err != nil {
@@ -85,6 +92,61 @@ var cmdList = &cobra.Command{
 		}
 		return nil
 	},
+}
+
+// groupLinked moves the profiles that share Claude Code sessions next to each
+// other, where the first of them was listed, and brackets them in the CODE
+// LINKED column with the primary on top.
+func groupLinked(profiles []profile.Meta, links profile.SessionLinks) ([]profile.Meta, []string) {
+	if links.Primary == "" {
+		return profiles, make([]string, len(profiles))
+	}
+	group := []string{links.Primary}
+	for _, l := range links.Links {
+		group = append(group, l.Profile)
+	}
+	var members []profile.Meta
+	for _, name := range group {
+		if i := slices.IndexFunc(profiles, func(p profile.Meta) bool { return p.Name == name }); i >= 0 {
+			members = append(members, profiles[i])
+		}
+	}
+
+	var ordered []profile.Meta
+	var labels []string
+	placed := false
+	for _, p := range profiles {
+		if !slices.Contains(group, p.Name) {
+			ordered = append(ordered, p)
+			labels = append(labels, "")
+			continue
+		}
+		if placed {
+			continue
+		}
+		placed = true
+		for i, m := range members {
+			ordered = append(ordered, m)
+			labels = append(labels, linkBracket(i, len(members), m.Name == links.Primary))
+		}
+	}
+	return ordered, labels
+}
+
+func linkBracket(i, n int, primary bool) string {
+	mark := "┤"
+	switch {
+	case n == 1:
+		mark = "─"
+	case i == 0:
+		mark = "┐"
+	case i == n-1:
+		mark = "┘"
+	}
+	if primary {
+		return mark + " primary"
+	}
+	return mark
 }
 
 func healthLabel(health profile.Health) string { return string(health) }

@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"reflect"
 	"testing"
 	"time"
 
@@ -12,6 +13,28 @@ func TestHealthLabelDistinguishesAllStates(t *testing.T) {
 		if got := healthLabel(health); got != string(health) {
 			t.Fatalf("healthLabel(%q) = %q", health, got)
 		}
+	}
+}
+
+func TestGroupLinkedBracketsLinkedProfilesTogether(t *testing.T) {
+	profiles := []profile.Meta{{Name: "alpha"}, {Name: "personal"}, {Name: "beta"}, {Name: "work"}, {Name: "zeta"}}
+	links := profile.SessionLinks{Primary: "work", Links: []profile.SessionLink{{Profile: "personal"}, {Profile: "zeta"}}}
+
+	ordered, labels := groupLinked(profiles, links)
+	var names []string
+	for _, p := range ordered {
+		names = append(names, p.Name)
+	}
+	if want := []string{"alpha", "work", "personal", "zeta", "beta"}; !reflect.DeepEqual(names, want) {
+		t.Fatalf("order = %v, want %v", names, want)
+	}
+	if want := []string{"", "┐ primary", "┤", "┘", ""}; !reflect.DeepEqual(labels, want) {
+		t.Fatalf("labels = %q, want %q", labels, want)
+	}
+
+	_, labels = groupLinked(profiles, profile.SessionLinks{})
+	if !reflect.DeepEqual(labels, make([]string, len(profiles))) {
+		t.Fatalf("unlinked labels = %q", labels)
 	}
 }
 
