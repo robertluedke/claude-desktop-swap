@@ -66,6 +66,7 @@ type switchStore interface {
 	Current() (string, error)
 	Checkpoint(string, string) error
 	Restore(string, string) error
+	SyncSessions(string) error
 }
 
 // accountVerifier checks a live Cookies database against the Claude.ai API.
@@ -96,6 +97,10 @@ func switchProfileWith(name string, store switchStore, p platform.Platform, out 
 		if err := store.Checkpoint(current, appData); err != nil {
 			return fmt.Errorf("checkpoint outgoing profile: %w", err)
 		}
+	}
+
+	if err := store.SyncSessions(appData); err != nil {
+		fmt.Fprintf(out, "⚠ Could not sync linked Claude Code sessions: %v\n", err)
 	}
 
 	fmt.Fprintf(out, "Restoring profile %q...\n", name)

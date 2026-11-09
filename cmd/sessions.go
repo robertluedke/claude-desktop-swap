@@ -14,10 +14,10 @@ import (
 var cmdLinkSessions = &cobra.Command{
 	Use:   "link-code-sessions <primary> <profile>...",
 	Short: "Share the primary profile's Claude Code sessions with other profiles",
-	Long: `Merges each profile's Claude Code sessions into the primary profile's
-session directory and replaces theirs with a link to it, so every linked
-account shows and continues the same sessions. Cowork sessions are not
-affected. A backup is written to ~/.claude-swap/sessions-backup-<time>.`,
+	Long: `Syncs Claude Code sessions between the primary profile and each other
+profile now and on every switch, so every linked account shows and continues
+the same sessions. Cowork sessions are not affected. A backup is written to
+~/.claude-swap/sessions-backup-<time>.`,
 	Args: cobra.MinimumNArgs(2),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		store, err := profile.NewStore()
@@ -28,7 +28,7 @@ affected. A backup is written to ~/.claude-swap/sessions-backup-<time>.`,
 			if err := store.LinkSessions(appData, args[0], args[1:]); err != nil {
 				return err
 			}
-			fmt.Printf("Claude Code sessions of %s now use %q's sessions.\n", strings.Join(args[1:], ", "), args[0])
+			fmt.Printf("Claude Code sessions of %s are now synced with %q.\n", strings.Join(args[1:], ", "), args[0])
 			return nil
 		})
 	},
@@ -37,9 +37,9 @@ affected. A backup is written to ~/.claude-swap/sessions-backup-<time>.`,
 var cmdUnlinkSessions = &cobra.Command{
 	Use:   "unlink-code-sessions [profile...]",
 	Short: "Give linked profiles their own Claude Code sessions again",
-	Long: `Removes the link for each profile (all linked profiles if none given).
-Sessions a profile brought in when it was linked move back to it; sessions
-created while linked stay with the primary profile.`,
+	Long: `Stops syncing sessions for each profile (all linked profiles if none
+given). Each profile gets back the sessions it had before it was linked; the
+primary profile keeps its own plus every session created while linked.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		store, err := profile.NewStore()
 		if err != nil {
@@ -47,14 +47,28 @@ created while linked stay with the primary profile.`,
 		}
 		return withAppStopped(platform.Current(), os.Stdout, func(appData string) error {
 			done, err := store.UnlinkSessions(appData, args)
-			if len(done) > 0 {
-				fmt.Printf("Unlinked Claude Code sessions of %s.\n", strings.Join(done, ", "))
-			} else if err == nil {
+			for _, r := range done {
+				printUnlinkResult(os.Stdout, r)
+			}
+			if len(done) == 0 && err == nil {
 				fmt.Println("No linked profiles.")
 			}
 			return err
 		})
 	},
+}
+
+func printUnlinkResult(out io.Writer, r profile.UnlinkResult) {
+	fmt.Fprintf(out, "Unlinked Claude Code sessions of %q from %q:\n", r.Profile, r.Primary)
+	fmt.Fprintf(out, "  %s keeps %s from before the link and drops %s shared while linked.\n", r.Profile, sessionCount(r.Kept), sessionCount(r.Dropped))
+	fmt.Fprintf(out, "  %s keeps %s, including every session created while linked, and hands back %s to %s.\n", r.Primary, sessionCount(r.PrimaryKept), sessionCount(r.Returned), r.Profile)
+}
+
+func sessionCount(n int) string {
+	if n == 1 {
+		return "1 session"
+	}
+	return fmt.Sprintf("%d sessions", n)
 }
 
 // withAppStopped runs fn with Claude Desktop stopped, restarting it afterwards

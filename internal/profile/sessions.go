@@ -4,11 +4,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io/fs"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
+	"time"
 )
 
 const (
@@ -18,21 +18,27 @@ const (
 	scheduledTasks   = "scheduled-tasks.json"
 	orgKeyPrefix     = "dxt:allowlistEnabled:"
 	sessionBackupDir = "sessions-backup-"
+	deletedPrefix    = "deleted_"
 )
 
 // SessionLinks records which profiles share the primary's Claude Code
-// session directory, and which files each brought in, so unlinking can hand
-// back exactly what was theirs.
+// sessions. Each keeps a real directory of its own: Claude Desktop refuses to
+// write through a junction or symlink ("symlink/file plant") and then keeps
+// new sessions only in memory, losing them on its next restart. SyncSessions
+// copies sessions between the directories while the app is stopped instead.
 type SessionLinks struct {
 	Primary string        `json:"primary"`
 	Dir     string        `json:"dir"`
 	Links   []SessionLink `json:"links"`
 }
 
+// SessionLink.Sessions lists the session files the profile had when it was
+// linked; unlinking hands exactly these back. The "moved" key is kept from the
+// junction era, whose moved files are the same set.
 type SessionLink struct {
-	Profile string   `json:"profile"`
-	Dir     string   `json:"dir"`
-	Moved   []string `json:"moved"`
+	Profile  string   `json:"profile"`
+	Dir      string   `json:"dir"`
+	Sessions []string `json:"moved"`
 }
 
 // sessionDir resolves <account>/<org>, the key Claude Desktop files a
@@ -82,9 +88,9 @@ func (s *Store) saveSessionLinks(links SessionLinks) error {
 	return writeJSONAtomic(path, links)
 }
 
-// LinkSessions makes every profile in others read and write primary's
-// session directory: their existing sessions are merged into it and their
-// own directory is replaced by a link. Claude Desktop must not be running.
+// LinkSessions makes every profile in others share primary's Claude Code
+// sessions: their archived indexes are merged and all session directories are
+// synced. Claude Desktop must not be running.
 func (s *Store) LinkSessions(appDataPath, primary string, others []string) error {
 	links, err := s.LoadSessionLinks()
 	if err != nil {
@@ -99,7 +105,7 @@ func (s *Store) LinkSessions(appDataPath, primary string, others []string) error
 	}
 	root := filepath.Join(appDataPath, sessionsDirName)
 	target := filepath.Join(root, primaryDir)
-	if err := os.MkdirAll(target, dirPerm); err != nil {
+	if err := realDir(target); err != nil {
 		return err
 	}
 	links.Primary, links.Dir = primary, primaryDir
@@ -124,44 +130,32 @@ func (s *Store) LinkSessions(appDataPath, primary string, others []string) error
 			return fmt.Errorf("%q and %q are the same account", name, primary)
 		}
 		path := filepath.Join(root, dir)
-		link := SessionLink{Profile: name, Dir: dir}
-		switch linked, err := linkTarget(path); {
-		case err != nil:
+		if err := realDir(path); err != nil {
 			return err
-		case linked != "" && !samePath(linked, target):
-			return fmt.Errorf("%s already links to %s", path, linked)
-		case linked == "":
-			if _, err := os.Stat(path); err == nil {
-				if err := copyDir(path, filepath.Join(backup, name)); err != nil {
-					return fmt.Errorf("backup %s: %w", name, err)
-				}
-				if link.Moved, err = mergeSessions(path, target); err != nil {
-					return err
-				}
-				if err := os.RemoveAll(path); err != nil {
-					return err
-				}
-			}
-			if err := os.MkdirAll(filepath.Dir(path), dirPerm); err != nil {
-				return err
-			}
-			if err := makeLink(target, path); err != nil {
-				return fmt.Errorf("link %s: %w", name, err)
-			}
 		}
-		links.Links = append(links.Links, link)
+		if err := copyDir(path, filepath.Join(backup, name)); err != nil {
+			return fmt.Errorf("backup %s: %w", name, err)
+		}
+		if err := mergeArchived(filepath.Join(path, archivedIndex), filepath.Join(target, archivedIndex)); err != nil {
+			return err
+		}
+		sessions, err := sessionFiles(path)
+		if err != nil {
+			return err
+		}
+		links.Links = append(links.Links, SessionLink{Profile: name, Dir: dir, Sessions: sessions})
 		if err := s.saveSessionLinks(links); err != nil {
 			return err
 		}
 	}
-	return nil
+	return s.SyncSessions(appDataPath)
 }
 
-// UnlinkSessions gives each named profile (all linked ones if none) its own
-// session directory again. Sessions it brought in at link time move back;
-// sessions created while linked stay with the primary, since nothing records
-// which account started them.
-func (s *Store) UnlinkSessions(appDataPath string, names []string) ([]string, error) {
+// UnlinkSessions stops syncing each named profile (all linked ones if none).
+// After a last sync, the profile keeps only the sessions it had when it was
+// linked, and those leave every directory still linked. Sessions created while
+// linked stay with the primary, wherever they were started.
+func (s *Store) UnlinkSessions(appDataPath string, names []string) ([]UnlinkResult, error) {
 	links, err := s.LoadSessionLinks()
 	if err != nil {
 		return nil, err
@@ -171,98 +165,197 @@ func (s *Store) UnlinkSessions(appDataPath string, names []string) ([]string, er
 			names = append(names, l.Profile)
 		}
 	}
+	if err := s.SyncSessions(appDataPath); err != nil {
+		return nil, err
+	}
 	root := filepath.Join(appDataPath, sessionsDirName)
-	target := filepath.Join(root, links.Dir)
-	var done []string
+	primaryDir, primary := links.Dir, links.Primary
+	var done []UnlinkResult
 	for _, name := range names {
 		i := slices.IndexFunc(links.Links, func(l SessionLink) bool { return l.Profile == name })
 		if i < 0 {
 			return done, fmt.Errorf("profile %q is not linked", name)
 		}
 		link := links.Links[i]
-		path := filepath.Join(root, link.Dir)
-		if linked, err := linkTarget(path); err != nil {
-			return done, err
-		} else if linked != "" {
-			if err := os.Remove(path); err != nil {
-				return done, err
-			}
-		}
-		if err := os.MkdirAll(path, dirPerm); err != nil {
-			return done, err
-		}
-		if err := splitSessions(target, path, link.Moved); err != nil {
+		own := func(file string) bool { return slices.Contains(link.Sessions, file) }
+		result := UnlinkResult{Profile: name, Primary: primary}
+		if result.Kept, result.Dropped, err = pruneSessions(filepath.Join(root, link.Dir), own); err != nil {
 			return done, err
 		}
 		links.Links = slices.Delete(links.Links, i, i+1)
+		remaining := []string{primaryDir}
+		for _, l := range links.Links {
+			remaining = append(remaining, l.Dir)
+		}
+		for _, dir := range remaining {
+			kept, returned, err := pruneSessions(filepath.Join(root, dir), func(file string) bool { return !own(file) })
+			if err != nil {
+				return done, err
+			}
+			if dir == primaryDir {
+				result.PrimaryKept, result.Returned = kept, returned
+			}
+		}
 		if len(links.Links) == 0 {
 			links = SessionLinks{}
 		}
 		if err := s.saveSessionLinks(links); err != nil {
 			return done, err
 		}
-		done = append(done, name)
+		done = append(done, result)
 	}
 	return done, nil
 }
 
-// mergeSessions moves every file of src into dst that dst does not already
-// have, unions the archived index, and returns the moved paths relative to
-// src. Colliding files (per-org defaults) are left behind for the backup.
-func mergeSessions(src, dst string) ([]string, error) {
-	var moved []string
-	err := filepath.WalkDir(src, func(path string, d fs.DirEntry, err error) error {
-		if err != nil || d.IsDir() {
+// SyncSessions gives every linked session directory the newest copy of each
+// session file and applies deletion markers everywhere. Only one account is
+// active between two syncs, so the newest copy is always the one to keep.
+// Claude Desktop must not be running.
+func (s *Store) SyncSessions(appDataPath string) error {
+	links, err := s.LoadSessionLinks()
+	if err != nil || links.Primary == "" {
+		return err
+	}
+	root := filepath.Join(appDataPath, sessionsDirName)
+	dirs := []string{filepath.Join(root, links.Dir)}
+	for _, l := range links.Links {
+		dirs = append(dirs, filepath.Join(root, l.Dir))
+	}
+	for _, dir := range dirs {
+		if err := realDir(dir); err != nil {
 			return err
 		}
-		rel, err := filepath.Rel(src, path)
+	}
+
+	type copySource struct {
+		path    string
+		modTime time.Time
+	}
+	newest := map[string]copySource{}
+	for _, dir := range dirs {
+		entries, err := os.ReadDir(dir)
 		if err != nil {
 			return err
 		}
-		to := filepath.Join(dst, rel)
-		if rel == archivedIndex {
-			return mergeArchived(path, to)
+		for _, e := range entries {
+			if !e.Type().IsRegular() || !syncedSessionFile(e.Name()) {
+				continue
+			}
+			info, err := e.Info()
+			if err != nil {
+				return err
+			}
+			if cur, ok := newest[e.Name()]; !ok || info.ModTime().After(cur.modTime) {
+				newest[e.Name()] = copySource{filepath.Join(dir, e.Name()), info.ModTime()}
+			}
 		}
-		if _, err := os.Stat(to); err == nil {
-			return nil
-		}
-		if err := os.MkdirAll(filepath.Dir(to), dirPerm); err != nil {
-			return err
-		}
-		if err := os.Rename(path, to); err != nil {
-			return err
-		}
-		moved = append(moved, filepath.ToSlash(rel))
-		return nil
-	})
-	return moved, err
-}
+	}
 
-func splitSessions(src, dst string, moved []string) error {
-	var returned []string
-	for _, rel := range moved {
-		from := filepath.Join(src, filepath.FromSlash(rel))
-		if _, err := os.Stat(from); err != nil {
-			continue
+	for name, src := range newest {
+		for _, dir := range dirs {
+			dst := filepath.Join(dir, name)
+			if info, err := os.Stat(dst); err == nil && !info.ModTime().Before(src.modTime) {
+				continue
+			}
+			if err := copyFile(src.path, dst); err != nil {
+				return err
+			}
+			// Copies keep the source's time, or the next sync would take a
+			// stale copy for the newest one.
+			if err := os.Chtimes(dst, src.modTime, src.modTime); err != nil {
+				return err
+			}
 		}
-		to := filepath.Join(dst, filepath.FromSlash(rel))
-		if err := os.MkdirAll(filepath.Dir(to), dirPerm); err != nil {
-			return err
-		}
-		if err := os.Rename(from, to); err != nil {
-			return err
-		}
-		returned = append(returned, strings.TrimSuffix(filepath.Base(rel), ".json"))
 	}
-	if err := splitArchived(filepath.Join(src, archivedIndex), filepath.Join(dst, archivedIndex), returned); err != nil {
-		return err
-	}
-	if _, err := os.Stat(filepath.Join(dst, scheduledTasks)); errors.Is(err, os.ErrNotExist) {
-		if err := copyFile(filepath.Join(src, scheduledTasks), filepath.Join(dst, scheduledTasks)); err != nil && !errors.Is(err, os.ErrNotExist) {
-			return err
+	// Deletions run only after every copy: a marker may name a file that is
+	// still another copy's source.
+	for name := range newest {
+		if id, ok := strings.CutPrefix(name, deletedPrefix); ok {
+			for _, dir := range dirs {
+				if err := ignoreMissing(os.Remove(filepath.Join(dir, "local_"+id+".json"))); err != nil {
+					return err
+				}
+			}
 		}
 	}
 	return nil
+}
+
+func isSessionFile(name string) bool {
+	return strings.HasPrefix(name, "local_") && strings.HasSuffix(name, ".json")
+}
+
+func sessionFiles(dir string) ([]string, error) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil, err
+	}
+	var files []string
+	for _, e := range entries {
+		if e.Type().IsRegular() && isSessionFile(e.Name()) {
+			files = append(files, e.Name())
+		}
+	}
+	return files, nil
+}
+
+type UnlinkResult struct {
+	Profile, Primary                     string
+	Kept, Dropped, PrimaryKept, Returned int
+}
+
+// pruneSessions removes every session file in dir that keep rejects, and
+// drops it from the archived index too.
+func pruneSessions(dir string, keep func(file string) bool) (kept, removed int, err error) {
+	files, err := sessionFiles(dir)
+	if err != nil {
+		return 0, 0, err
+	}
+	for _, f := range files {
+		if keep(f) {
+			kept++
+			continue
+		}
+		if err := os.Remove(filepath.Join(dir, f)); err != nil {
+			return kept, removed, err
+		}
+		removed++
+	}
+	path := filepath.Join(dir, archivedIndex)
+	a, err := readArchived(path)
+	if err != nil || len(a.ids) == 0 {
+		return kept, removed, err
+	}
+	ids := slices.DeleteFunc(slices.Clone(a.ids), func(id string) bool { return !keep(id + ".json") })
+	if len(ids) == len(a.ids) {
+		return kept, removed, nil
+	}
+	a.ids = ids
+	return kept, removed, writeArchived(path, a)
+}
+
+// syncedSessionFile matches the per-session files Claude Desktop writes.
+// Per-org files such as scheduled-tasks.json stay with their own account.
+func syncedSessionFile(name string) bool {
+	return name == archivedIndex ||
+		strings.HasPrefix(name, deletedPrefix) ||
+		isSessionFile(name)
+}
+
+// realDir ensures path is a plain directory, replacing a junction or symlink
+// left by an older version that linked session directories. Removing the link
+// leaves its target untouched.
+func realDir(path string) error {
+	linked, err := linkTarget(path)
+	if err != nil {
+		return err
+	}
+	if linked != "" {
+		if err := os.Remove(path); err != nil {
+			return err
+		}
+	}
+	return os.MkdirAll(path, dirPerm)
 }
 
 type archived struct {
@@ -320,34 +413,6 @@ func mergeArchived(src, dst string) error {
 	return writeArchived(dst, into)
 }
 
-func splitArchived(src, dst string, sessions []string) error {
-	from, err := readArchived(src)
-	if err != nil || len(from.ids) == 0 {
-		return err
-	}
-	var keep, give []string
-	for _, id := range from.ids {
-		if slices.Contains(sessions, id) {
-			give = append(give, id)
-		} else {
-			keep = append(keep, id)
-		}
-	}
-	if len(give) == 0 {
-		return nil
-	}
-	from.ids = keep
-	if err := writeArchived(src, from); err != nil {
-		return err
-	}
-	into, err := readArchived(dst)
-	if err != nil {
-		return err
-	}
-	into.ids = append(into.ids, give...)
-	return writeArchived(dst, into)
-}
-
 // linkTarget returns where path links to, or "" if it is a plain directory
 // or absent. Since Go 1.23, Windows junctions report ModeIrregular rather
 // than ModeSymlink, but Readlink still resolves them.
@@ -363,10 +428,6 @@ func linkTarget(path string) (string, error) {
 		return "", nil
 	}
 	return os.Readlink(path)
-}
-
-func samePath(a, b string) bool {
-	return strings.EqualFold(filepath.Clean(a), filepath.Clean(b))
 }
 
 func ignoreMissing(err error) error {

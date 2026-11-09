@@ -36,6 +36,12 @@ Account identity for `status`/`list`/picker highlighting is
 a live digest routinely diverges from what was last saved even for the
 correct account.
 
+Shared Claude Code sessions (`link-code-sessions`) are **synced copies, never
+a junction or symlink**. Claude Desktop refuses to write a session into a
+linked directory ("symlink/file plant" in `main.log`) and keeps it only in
+memory, so it vanishes on the next restart. `SyncSessions` runs on every `use`
+while the app is stopped; newest mtime wins, so copies keep their source time.
+
 ## Language & Stack
 
 - **Primary**: Go

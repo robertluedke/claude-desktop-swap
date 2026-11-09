@@ -87,13 +87,16 @@ claude-desktop-swap link-code-sessions work personal
 
 # Give personal its own Claude Code sessions again
 claude-desktop-swap unlink-code-sessions personal
+
 ```
 
 ### Shared Claude Code sessions
 
-Claude Desktop keeps the sidebar's Claude Code sessions per account and organization under `claude-code-sessions/<account>/<org>/`. `link-code-sessions <primary> <profile>...` merges each profile's sessions into the primary's directory and replaces theirs with a link (a junction on Windows, a symlink on macOS), so all linked accounts see and continue the same sessions — nothing is copied. A backup goes to `~/.claude-swap/sessions-backup-<time>`, and the links are recorded in `~/.claude-swap/session-links.json`.
+Claude Desktop keeps the sidebar's Claude Code sessions per account and organization under `claude-code-sessions/<account>/<org>/`. `link-code-sessions <primary> <profile>...` syncs the session files between the primary's directory and each profile's, right away and again on every `use`, so all linked accounts see and continue the same sessions. For each session the newest copy wins, and deleted sessions are removed everywhere. A backup goes to `~/.claude-swap/sessions-backup-<time>`, and the links are recorded in `~/.claude-swap/session-links.json`.
 
-`unlink-code-sessions [profile...]` (all linked profiles if none given) removes the link. Sessions a profile brought in when it was linked move back to it; sessions created while linked stay with the primary. Cowork sessions are not affected. Connectors bound to the primary's organization are not available when continuing a session from another account.
+Every account keeps a real directory. Claude Desktop refuses to save sessions into a junction or symlink, so a session created there exists only in memory and disappears on the next restart (for example after an auto-update). Older versions of this tool linked the directories that way; the next `use`, `link-code-sessions` or `unlink-code-sessions` replaces such a link with a real directory.
+
+`unlink-code-sessions [profile...]` (all linked profiles if none given) runs a last sync and then stops syncing. Each profile gets back exactly the sessions it had before it was linked (recorded at link time); the primary keeps its own plus every session created while linked, whichever account started it.
 
 ## First-time setup
 

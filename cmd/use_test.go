@@ -22,7 +22,7 @@ func TestSwitchProfileOrdersStopCheckpointRestoreAndLaunch(t *testing.T) {
 	if err := switchProfileWith("incoming", store, p, &bytes.Buffer{}, acceptingVerifier); err != nil {
 		t.Fatal(err)
 	}
-	want := []string{"app-data", "inspect:incoming", "stop", "current", "checkpoint:outgoing", "restore:incoming", "launch"}
+	want := []string{"app-data", "inspect:incoming", "stop", "current", "checkpoint:outgoing", "sync", "restore:incoming", "launch"}
 	if !reflect.DeepEqual(events, want) {
 		t.Fatalf("events = %v, want %v", events, want)
 	}
@@ -131,6 +131,10 @@ func (s *fakeSwitchStore) Restore(name, path string) error {
 		s.current = name
 	}
 	return s.restoreErr
+}
+func (s *fakeSwitchStore) SyncSessions(string) error {
+	*s.events = append(*s.events, "sync")
+	return nil
 }
 
 type fakePlatform struct {
